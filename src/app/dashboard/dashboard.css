@@ -1153,8 +1153,60 @@ body {
   .plans-grid {
     grid-template-columns: 1fr;
   }
+}/* Card Lock Overlay & Dimming */
+.locked-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(10, 15, 30, 0.78);
+  backdrop-filter: blur(5px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  z-index: 5;
+  transition: var(--transition-smooth);
+  border-radius: 16px;
 }
 
+.locked-icon {
+  font-size: 2.2rem;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.4));
+  animation: float 3s ease-in-out infinite;
+}
 
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+  100% { transform: translateY(0px); }
+}
 
+.locked-text {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  max-width: 90%;
+  font-weight: 500;
+}
+
+/* Make locked card content dim but visible under blur */
+.card.locked {
+  pointer-events: none;
+}
+
+.card.locked .card-header,
+.card.locked .insight-text,
+.card.locked .progress-bar-container,
+.card.locked .metric-value,
+.card.locked .visualizer-container,
+.card.locked .task-list,
+.card.locked .simulator-control {
+  opacity: 0.22;
+  filter: blur(1px);
+}
 

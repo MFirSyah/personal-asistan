@@ -34,6 +34,7 @@ export default function DashboardPage() {
     fullname: 'Sobat Setia',
     assistant_name: 'Sobat AI',
     user_nickname: 'Sobat',
+    created_at: null,
   });
   const [insights, setInsights] = useState<Record<string, Insight>>({});
   const [riskMultiplier, setRiskMultiplier] = useState(1.0); // 1.0 = 100% spending
@@ -278,7 +279,7 @@ export default function DashboardPage() {
   const fetchDashboardData = async (client: any, user: any) => {
     const { data: uProfile } = await client
       .from('user_profiles')
-      .select('fullname, assistant_name, user_nickname, selected_personality, dynamic_metadata')
+      .select('fullname, assistant_name, user_nickname, selected_personality, dynamic_metadata, created_at')
       .eq('id', user.id)
       .maybeSingle();
     
@@ -1016,6 +1017,70 @@ export default function DashboardPage() {
   const progressRatio = totalIncome > 0 ? Math.min((totalExpense / totalIncome) * 100, 100) : 0;
   const consistencyScore = insights.consistency_graph?.sources_metadata?.consistencyRate || 0;
 
+  const isDemo = !supabase || profile.fullname?.includes('(Demo)') || profile.user_nickname?.includes('Demo');
+
+  const getUsageDays = () => {
+    if (!profile || !profile.created_at) return 1;
+    try {
+      const createdDate = new Date(profile.created_at);
+      const today = new Date();
+      const createdZero = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
+      const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const diffTime = todayZero.getTime() - createdZero.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      return diffDays || 1;
+    } catch (e) {
+      return 1;
+    }
+  };
+  const usageDays = getUsageDays();
+
+  const isCardLocked = (config: {
+    reqDays?: number;
+    reqTrans?: number;
+    reqTodos?: number;
+  }) => {
+    if (isDemo) return false;
+    if (config.reqDays && usageDays < config.reqDays) return true;
+    if (config.reqTrans && rawTransactions.length < config.reqTrans) return true;
+    if (config.reqTodos && rawTodos.length < config.reqTodos) return true;
+    return false;
+  };
+
+  const renderLockOverlay = (config: {
+    reqDays?: number;
+    reqTrans?: number;
+    reqTodos?: number;
+  }) => {
+    if (isDemo) return null;
+
+    let isLocked = false;
+    let message = '';
+    
+    if (config.reqDays && usageDays < config.reqDays) {
+      isLocked = true;
+      const shortDays = config.reqDays - usageDays;
+      message = `Analisis muncul pada hari ke-${config.reqDays} penggunaan. Anda kurang ${shortDays} hari. Terus gunakan aplikasi agar dapat menampilkan data.`;
+    } else if (config.reqTrans && rawTransactions.length < config.reqTrans) {
+      isLocked = true;
+      const shortTrans = config.reqTrans - rawTransactions.length;
+      message = `Analisis muncul setelah Anda memasukkan minimal ${config.reqTrans} data transaksi. Anda kurang ${shortTrans} data. Terus gunakan aplikasi agar dapat menampilkan data.`;
+    } else if (config.reqTodos && rawTodos.length < config.reqTodos) {
+      isLocked = true;
+      const shortTodos = config.reqTodos - rawTodos.length;
+      message = `Analisis muncul setelah Anda memasukkan minimal ${config.reqTodos} data tugas. Anda kurang ${shortTodos} data. Terus gunakan aplikasi agar dapat menampilkan data.`;
+    }
+
+    if (!isLocked) return null;
+
+    return (
+      <div className="locked-overlay">
+        <span className="locked-icon">⏳</span>
+        <p className="locked-text">{message}</p>
+      </div>
+    );
+  };
+
   // Simulator calculation
   const simulatedExpense = totalExpense * riskMultiplier;
   const simulatedSavings = totalIncome - simulatedExpense;
@@ -1187,7 +1252,8 @@ export default function DashboardPage() {
               
               <div className="insights-grid">
                 {/* Cash Flow Card */}
-                <div className="card">
+                <div className={`card ${isCardLocked({ reqTrans: 1 }) ? 'locked' : ''}`}>
+                  {renderLockOverlay({ reqTrans: 1 })}
                   <div className="card-header">
                     <h3>Arus Kas Anda</h3>
                     <span className="card-icon">💳</span>
@@ -1216,13 +1282,14 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Money Leak Auditor */}
-                <div className="card">
+                <div className={`card ${isCardLocked({ reqTrans: 3 }) ? 'locked' : ''}`}>
+                  {renderLockOverlay({ reqTrans: 3 })}
                   <div className="card-header">
                     <h3>Audit Kebocoran Keuangan</h3>
                     <span className="card-icon">🔍</span>
                   </div>
                   <p className="insight-text">
-                    {insights.money_leak_auditor?.cached_reply || 'Memuat data kebocoran...'}
+                    {insights.money_leak_auditor?.cached_reply || 'Asisten Anda sedang menganalisis pola transaksi untuk mendeteksi potensi kebocoran...'}
                   </p>
                   {insights.money_leak_auditor?.sources_metadata && (
                     <div className="visualizer-container">
@@ -1244,13 +1311,14 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Runway Forecast & Interactive Simulator */}
-                <div className="card">
+                <div className={`card ${isCardLocked({ reqTrans: 5 }) ? 'locked' : ''}`}>
+                  {renderLockOverlay({ reqTrans: 5 })}
                   <div className="card-header">
                     <h3>Prediksi Runway & Risiko</h3>
                     <span className="card-icon">⏳</span>
                   </div>
                   <p className="insight-text" style={{ fontSize: '0.85rem' }}>
-                    {insights.runway_prediction?.cached_reply || 'Menghitung runway keuangan...'}
+                    {insights.runway_prediction?.cached_reply || 'Asisten Anda sedang menghitung proyeksi runway keuangan...'}
                   </p>
                   
                   <div className="simulator-control">
@@ -1286,7 +1354,8 @@ export default function DashboardPage() {
               
               <div className="insights-grid">
                 {/* Consistency Graph */}
-                <div className="card">
+                <div className={`card ${isCardLocked({ reqTodos: 2 }) ? 'locked' : ''}`}>
+                  {renderLockOverlay({ reqTodos: 2 })}
                   <div className="card-header">
                     <h3>Skor Konsistensi Tugas</h3>
                     <span className="card-icon">📈</span>
@@ -1317,20 +1386,21 @@ export default function DashboardPage() {
                     </div>
                     <div>
                       <p className="insight-text" style={{ fontSize: '0.85rem' }}>
-                        {insights.consistency_graph?.cached_reply || 'Menganalisis konsistensi tugas...'}
+                        {insights.consistency_graph?.cached_reply || 'Asisten Anda sedang menganalisis rasio penyelesaian tugas Anda...'}
                       </p>
                     </div>
                   </div>
                 </div>
 
                 {/* Weekly Priority Matrix */}
-                <div className="card">
+                <div className={`card ${isCardLocked({ reqTodos: 3 }) ? 'locked' : ''}`}>
+                  {renderLockOverlay({ reqTodos: 3 })}
                   <div className="card-header">
                     <h3>Matriks Prioritas Mingguan</h3>
                     <span className="card-icon">🎯</span>
                   </div>
                   <p className="insight-text" style={{ fontSize: '0.85rem' }}>
-                    {insights.weekly_priority_matrix?.cached_reply || 'Menganalisis antrean tugas...'}
+                    {insights.weekly_priority_matrix?.cached_reply || 'Asisten Anda sedang memetakan tingkat urgensi tugas...'}
                   </p>
                   {insights.weekly_priority_matrix?.sources_metadata && Array.isArray(insights.weekly_priority_matrix.sources_metadata) && (
                     <div className="task-list">
@@ -1347,13 +1417,14 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Burnout Detection & Stress Engine */}
-                <div className="card">
+                <div className={`card ${isCardLocked({ reqDays: 3 }) ? 'locked' : ''}`}>
+                  {renderLockOverlay({ reqDays: 3 })}
                   <div className="card-header">
                     <h3>Detektor Burnout & Stres</h3>
                     <span className="card-icon">❤️</span>
                   </div>
                   <p className="insight-text">
-                    {insights.burnout_detection_engine?.cached_reply || 'Mengukur beban mental...'}
+                    {insights.burnout_detection_engine?.cached_reply || 'Asisten Anda sedang mengukur indeks stres berdasarkan aktivitas Anda...'}
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Level Kelelahan Mental:</span>
@@ -1378,13 +1449,14 @@ export default function DashboardPage() {
               
               <div className="insights-grid">
                 {/* Mood vs Spending */}
-                <div className="card">
+                <div className={`card ${isCardLocked({ reqDays: 5 }) ? 'locked' : ''}`}>
+                  {renderLockOverlay({ reqDays: 5 })}
                   <div className="card-header">
                     <h3>Korelasi Mood & Belanja</h3>
                     <span className="card-icon">🛍️</span>
                   </div>
                   <p className="insight-text">
-                    {insights.mood_vs_spending?.cached_reply || 'Mengevaluasi korelasi psikologis belanja...'}
+                    {insights.mood_vs_spending?.cached_reply || 'Asisten Anda sedang memetakan hubungan antara kondisi psikologis dan transaksi Anda...'}
                   </p>
                   <div className="visualizer-container">
                     <div className="bar-column">
@@ -1403,13 +1475,14 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Mood vs Productivity */}
-                <div className="card">
+                <div className={`card ${isCardLocked({ reqDays: 5 }) ? 'locked' : ''}`}>
+                  {renderLockOverlay({ reqDays: 5 })}
                   <div className="card-header">
                     <h3>Korelasi Mood & Produktivitas</h3>
                     <span className="card-icon">🏃‍♂️</span>
                   </div>
                   <p className="insight-text">
-                    {insights.mood_vs_productivity?.cached_reply || 'Mengevaluasi korelasi emosi kerja...'}
+                    {insights.mood_vs_productivity?.cached_reply || 'Asisten Anda sedang memetakan hubungan antara kondisi psikologis dan produktivitas...'}
                   </p>
                   <div className="visualizer-container">
                     <div className="bar-column">
@@ -1427,14 +1500,15 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Worth-It Audit Score */}
-                <div className="card">
+                {/* Worth-It Score Audit */}
+                <div className={`card ${isCardLocked({ reqTrans: 3 }) ? 'locked' : ''}`}>
+                  {renderLockOverlay({ reqTrans: 3 })}
                   <div className="card-header">
                     <h3>Worth-It Score Audit</h3>
                     <span className="card-icon">💎</span>
                   </div>
                   <p className="insight-text">
-                    {insights.trend_worth_it_score?.cached_reply || 'Mengaudit nilai guna pengeluaran...'}
+                    {insights.trend_worth_it_score?.cached_reply || 'Asisten Anda sedang menilai indeks kepuasan dan nilai guna dari pengeluaran Anda...'}
                   </p>
                   <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
                     <div style={{ fontSize: '3rem', fontWeight: 800, fontFamily: 'var(--font-title)', color: 'var(--color-success)', textShadow: '0 0 20px rgba(16,185,129,0.3)' }}>
@@ -1447,7 +1521,8 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Time-Based & Chronotype Analysis Card */}
-                <div className="card">
+                <div className={`card ${isCardLocked({ reqDays: 2 }) ? 'locked' : ''}`}>
+                  {renderLockOverlay({ reqDays: 2 })}
                   <div className="card-header">
                     <h3>Pola Waktu & Kronotipe Kognitif</h3>
                     <span className="card-icon">🕒</span>
@@ -1514,7 +1589,12 @@ export default function DashboardPage() {
               <h2 className="section-title" style={{ marginBottom: '20px', borderLeftColor: 'var(--color-purple)' }}>
                 <span>💡</span> Rekomendasi Insight Khusus & Tren Internet 2026
               </h2>
-              <div className="special-insights-grid">
+              {(!isDemo && rawTransactions.length === 0 && rawTodos.length === 0) ? (
+                <p className="insight-text" style={{ fontStyle: 'italic', textAlign: 'center', padding: '28px', background: 'var(--bg-card)', border: '1px dashed var(--border-glass)', borderRadius: '16px' }}>
+                  Rekomendasi insight khusus belum tersedia. Masukkan data keuangan atau tugas Anda terlebih dahulu untuk memicu analisis cerdas dari asisten AI Anda.
+                </p>
+              ) : (
+                <div className="special-insights-grid">
                 {getSpecialInsights().map((insight) => {
                   const isPlanned = plannedInsightIds.includes(insight.id);
                   return (
@@ -1542,6 +1622,7 @@ export default function DashboardPage() {
                   );
                 })}
               </div>
+            )}
             </section>
 
             {/* Section: Future Plans List */}
