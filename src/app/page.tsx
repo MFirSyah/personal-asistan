@@ -60,26 +60,50 @@ export default function Home() {
     const client = getSupabaseClient();
     setSupabaseClient(client);
     
-    // Check if user is already authenticated
     if (client) {
-      client.auth.getSession().then(({ data: { session } }: any) => {
+      // 1. Check existing session
+      client.auth.getSession().then(async ({ data: { session } }: any) => {
         if (session) {
-          // If already logged in, let's check if user profile exists
-          client.from('user_profiles')
+          localStorage.setItem('access_token', session.access_token);
+          localStorage.setItem('refresh_token', session.refresh_token);
+          
+          const { data: uProfile } = await client.from('user_profiles')
             .select('fullname, user_nickname, assistant_name, selected_personality')
             .eq('id', session.user.id)
-            .maybeSingle()
-            .then(({ data: uProfile }: any) => {
-              if (uProfile) {
-                localStorage.setItem('access_token', session.access_token);
-                localStorage.setItem('refresh_token', session.refresh_token);
-                localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
-                // Automatically redirect if fully onboarded
-                window.location.href = '/dashboard';
-              }
-            });
+            .maybeSingle();
+
+          if (uProfile) {
+            localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
+            window.location.href = '/dashboard';
+          } else {
+            setStep(6); // Setup Profile
+          }
         }
       });
+
+      // 2. Listen to active auth state changes (e.g. from magic links, redirect_to callbacks)
+      const { data: { subscription } } = client.auth.onAuthStateChange(async (event: string, session: any) => {
+        if (session) {
+          localStorage.setItem('access_token', session.access_token);
+          localStorage.setItem('refresh_token', session.refresh_token);
+          
+          const { data: uProfile } = await client.from('user_profiles')
+            .select('fullname, user_nickname, assistant_name, selected_personality')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          if (uProfile) {
+            localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
+            window.location.href = '/dashboard';
+          } else {
+            setStep(6);
+          }
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
     }
   }, []);
 
@@ -542,13 +566,22 @@ export default function Home() {
           </form>
         )}
 
-        {/* STEP 5: OTP VERIFICATION */}
+        {/* STEP 5: EMAIL CONFIRMATION / OTP VERIFICATION */}
         {step === 5 && (
           <div className="form-input-container">
             <div className="otp-container">
-              <label className="form-group-label" style={{ textAlign: 'center', lineHeight: 1.4 }}>
-                Kami telah mengirimkan 6-digit kode verifikasi ke email <strong style={{ color: '#fff' }}>{email}</strong>. 
-                Masukkan kode tersebut di bawah ini untuk mengaktifkan sesi:
+              <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid #3b82f6', color: '#60a5fa', padding: '16px', borderRadius: '12px', fontSize: '0.88rem', lineHeight: 1.5, textAlign: 'center', marginBottom: '8px', width: '100%' }}>
+                📧 <strong>Konfirmasi Email Dikirim!</strong><br />
+                Silakan buka email <strong style={{ color: '#fff' }}>{email}</strong> dan klik <strong>Link Verifikasi/Tautan Konfirmasi</strong> yang dikirim oleh Supabase.<br />
+                <span style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '6px', display: 'block' }}>
+                  Halaman ini akan otomatis mendeteksi dan mengalihkan Anda setelah tautan diklik.
+                </span>
+              </div>
+
+              <div style={{ textAlign: 'center', margin: '8px 0', fontSize: '0.8rem', color: '#4b5563' }}>— ATAU MASUKKAN KODE OTP JIKA ADA —</div>
+
+              <label className="form-group-label" style={{ textAlign: 'center', display: 'block' }}>
+                Masukkan 6-digit kode verifikasi Anda di bawah ini:
               </label>
               
               <div className="otp-inputs">
@@ -578,7 +611,7 @@ export default function Home() {
                 &larr; Ubah Email
               </button>
               <button type="button" className="btn-wizard" onClick={handleRealVerifyOtp} disabled={isLoading}>
-                {isLoading ? 'Memverifikasi...' : 'Verifikasi & Lanjut'}
+                {isLoading ? 'Memverifikasi...' : 'Verifikasi Kode'}
               </button>
             </div>
           </div>
