@@ -9,11 +9,15 @@ import './home.css';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
+let supabaseClientInstance: any = null;
 const getSupabaseClient = () => {
   if (!supabaseUrl || !supabaseAnonKey) {
     return null;
   }
-  return createClient(supabaseUrl, supabaseAnonKey);
+  if (!supabaseClientInstance) {
+    supabaseClientInstance = createClient(supabaseUrl, supabaseAnonKey);
+  }
+  return supabaseClientInstance;
 };
 
 export default function Home() {
