@@ -275,23 +275,77 @@ export default function DashboardPage() {
     setIsLoading(false);
   };
 
+  const fetchDashboardData = async (client: any, user: any) => {
+    const { data: uProfile } = await client
+      .from('user_profiles')
+      .select('fullname, assistant_name, user_nickname, selected_personality, dynamic_metadata')
+      .eq('id', user.id)
+      .maybeSingle();
+    
+    if (uProfile) {
+      setProfile(uProfile);
+      const meta = (uProfile as any).dynamic_metadata || {};
+      if (meta.future_plans && Array.isArray(meta.future_plans)) {
+        setFuturePlans(meta.future_plans);
+      }
+    }
+
+    const { data: cache } = await client
+      .from('ai_insights_cache')
+      .select('insight_type, cached_reply, sources_metadata')
+      .eq('user_id', user.id);
+
+    if (cache) {
+      const map: Record<string, Insight> = {};
+      cache.forEach((item: Insight) => {
+        map[item.insight_type] = item;
+      });
+      setInsights(map);
+    }
+
+    // Fetch Raw Transactions for Dynamic Form fields scanning
+    const { data: mtData } = await client
+      .from('money_trackers')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (mtData) setRawTransactions(mtData);
+
+    // Fetch Raw Todos for Dynamic Form fields scanning
+    const { data: todoData } = await client
+      .from('todo_lists')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (todoData) setRawTodos(todoData);
+  };
+
   useEffect(() => {
     const client = getSupabaseClient();
     setSupabase(client);
 
     if (!client) {
       console.warn('Supabase credentials not found. Defaulting to simulation mode.');
-      // Auto-load mock data for developer local testing if credentials are empty
       loadMockData();
       return;
     }
 
     // Safely check active session from client
-    client.auth.getSession().then(({ data: { session } }: any) => {
+    client.auth.getSession().then(async ({ data: { session } }: any) => {
       if (session) {
         localStorage.setItem('access_token', session.access_token);
         localStorage.setItem('refresh_token', session.refresh_token);
-        initSession(client, session.access_token, session.refresh_token);
+        setIsAuthenticated(true);
+        try {
+          await fetchDashboardData(client, session.user);
+        } catch (err: any) {
+          console.error('Failed to load dashboard data:', err);
+          setErrorMsg(err.message || 'Gagal memuat data dashboard');
+        } finally {
+          setIsLoading(false);
+        }
       } else {
         // Fallback to local storage keys
         const access = localStorage.getItem('access_token');
@@ -343,53 +397,9 @@ export default function DashboardPage() {
       }
 
       setIsAuthenticated(true);
-      // Fetch user profile, insights, transactions and todos
       const { data: { user } } = await client.auth.getUser();
       if (user) {
-        const { data: uProfile } = await client
-          .from('user_profiles')
-          .select('fullname, assistant_name, user_nickname, selected_personality, dynamic_metadata')
-          .eq('id', user.id)
-          .maybeSingle();
-        
-        if (uProfile) {
-          setProfile(uProfile);
-          const meta = (uProfile as any).dynamic_metadata || {};
-          if (meta.future_plans && Array.isArray(meta.future_plans)) {
-            setFuturePlans(meta.future_plans);
-          }
-        }
-
-        const { data: cache } = await client
-          .from('ai_insights_cache')
-          .select('insight_type, cached_reply, sources_metadata')
-          .eq('user_id', user.id);
-
-        if (cache) {
-          const map: Record<string, Insight> = {};
-          cache.forEach((item: Insight) => {
-            map[item.insight_type] = item;
-          });
-          setInsights(map);
-        }
-
-        // Fetch Raw Transactions for Dynamic Form fields scanning
-        const { data: mtData } = await client
-          .from('money_trackers')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(50);
-        if (mtData) setRawTransactions(mtData);
-
-        // Fetch Raw Todos for Dynamic Form fields scanning
-        const { data: todoData } = await client
-          .from('todo_lists')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(50);
-        if (todoData) setRawTodos(todoData);
+        await fetchDashboardData(client, user);
       }
     } catch (err: any) {
       console.error('Initialization error:', err);

@@ -75,25 +75,42 @@ export default function Home() {
     setSupabaseClient(client);
     
     if (client) {
-      // 1. Check existing session
-      client.auth.getSession().then(async ({ data: { session } }: any) => {
-        if (session) {
-          localStorage.setItem('access_token', session.access_token);
-          localStorage.setItem('refresh_token', session.refresh_token);
-          
-          const { data: uProfile } = await client.from('user_profiles')
-            .select('fullname, user_nickname, assistant_name, selected_personality')
-            .eq('id', session.user.id)
-            .maybeSingle();
+      // 1. Check existing session with a 3-second timeout to prevent deadlocks from stale token refresh calls
+      const sessionPromise = client.auth.getSession();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Session check timed out')), 3000)
+      );
 
-          if (uProfile) {
-            localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
-            window.location.href = '/dashboard';
-          } else {
-            setStep(6); // Setup Profile
+      Promise.race([sessionPromise, timeoutPromise])
+        .then(async (res: any) => {
+          const session = res?.data?.session;
+          const error = res?.error;
+          if (error) throw error;
+          
+          if (session) {
+            localStorage.setItem('access_token', session.access_token);
+            localStorage.setItem('refresh_token', session.refresh_token);
+            
+            const { data: uProfile } = await client.from('user_profiles')
+              .select('fullname, user_nickname, assistant_name, selected_personality')
+              .eq('id', session.user.id)
+              .maybeSingle();
+
+            if (uProfile) {
+              localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
+              window.location.href = '/dashboard';
+            } else {
+              setStep(6); // Setup Profile
+            }
           }
-        }
-      });
+        })
+        .catch(err => {
+          console.warn('Auto-login session restoration skipped or timed out:', err);
+          // Safe cleanup of stale data to release locks
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          client.auth.signOut().catch(() => {});
+        });
 
       // 2. Listen to active auth state changes (e.g. from magic links, redirect_to callbacks)
       const { data: { subscription } } = client.auth.onAuthStateChange(async (event: string, session: any) => {
@@ -112,6 +129,10 @@ export default function Home() {
           } else {
             setStep(6);
           }
+        } else if (event === 'SIGNED_OUT' || !session) {
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          localStorage.removeItem('sim_user_profile');
         }
       });
 
@@ -177,35 +198,10 @@ export default function Home() {
       });
 
       if (error) throw error;
-
-      // Save tokens
-      localStorage.setItem('access_token', data.session.access_token);
-      localStorage.setItem('refresh_token', data.session.refresh_token);
-
-      // Check if profile exists
-      const { data: uProfile, error: profileError } = await supabaseClient
-        .from('user_profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .maybeSingle();
-
-      if (uProfile) {
-        // Fully onboarded, load into local storage and redirect
-        localStorage.setItem('sim_user_profile', JSON.stringify({
-          fullname: uProfile.fullname,
-          user_nickname: uProfile.user_nickname,
-          assistant_name: uProfile.assistant_name,
-          selected_personality: uProfile.selected_personality
-        }));
-        window.location.href = '/dashboard';
-      } else {
-        // User created account but didn't finish profile
-        setStep(6);
-      }
+      // REDIRECT AND STATE CHECKS ARE HANDLED BY onAuthStateChange!
     } catch (err: any) {
       console.error('Login error:', err);
       setAuthError(err.message || 'Gagal masuk. Periksa kembali email dan sandi Anda.');
-    } finally {
       setIsLoading(false);
     }
   };
