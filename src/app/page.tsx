@@ -36,6 +36,11 @@ export default function Home() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
+  // Password Visibility States
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   // Resend Verification Email Cooldown
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendMessage, setResendMessage] = useState('');
@@ -537,15 +542,34 @@ export default function Home() {
             
             <div className="form-group">
               <label className="form-group-label" htmlFor="login_password">Kata Sandi</label>
-              <input
-                type="password"
-                id="login_password"
-                className="form-text-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-              />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type={showLoginPassword ? 'text' : 'password'}
+                  id="login_password"
+                  className="form-text-input"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  style={{ paddingRight: '45px' }}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPassword(!showLoginPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '1.1rem',
+                    userSelect: 'none'
+                  }}
+                  title={showLoginPassword ? 'Sembunyikan Kata Sandi' : 'Lihat Kata Sandi'}
+                >
+                  {showLoginPassword ? '👁️' : '🙈'}
+                </button>
+              </div>
             </div>
 
             <div className="footer-nav">
@@ -583,28 +607,66 @@ export default function Home() {
             
             <div className="form-group">
               <label className="form-group-label" htmlFor="reg_password">Kata Sandi (Min. 6 karakter)</label>
-              <input
-                type="password"
-                id="reg_password"
-                className="form-text-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-              />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type={showRegisterPassword ? 'text' : 'password'}
+                  id="reg_password"
+                  className="form-text-input"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  style={{ paddingRight: '45px' }}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '1.1rem',
+                    userSelect: 'none'
+                  }}
+                  title={showRegisterPassword ? 'Sembunyikan Kata Sandi' : 'Lihat Kata Sandi'}
+                >
+                  {showRegisterPassword ? '👁️' : '🙈'}
+                </button>
+              </div>
             </div>
 
             <div className="form-group">
               <label className="form-group-label" htmlFor="reg_password_confirm">Konfirmasi Kata Sandi</label>
-              <input
-                type="password"
-                id="reg_password_confirm"
-                className="form-text-input"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-              />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  id="reg_password_confirm"
+                  className="form-text-input"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  style={{ paddingRight: '45px' }}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '1.1rem',
+                    userSelect: 'none'
+                  }}
+                  title={showConfirmPassword ? 'Sembunyikan Kata Sandi' : 'Lihat Kata Sandi'}
+                >
+                  {showConfirmPassword ? '👁️' : '🙈'}
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '4px' }}>
