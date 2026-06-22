@@ -92,16 +92,23 @@ export default function Home() {
           localStorage.setItem('access_token', session.access_token);
           localStorage.setItem('refresh_token', session.refresh_token);
           
-          const { data: uProfile } = await client.from('user_profiles')
-            .select('fullname, user_nickname, assistant_name, selected_personality')
-            .eq('id', session.user.id)
-            .maybeSingle();
+          try {
+            const { data: uProfile, error: profileErr } = await client.from('user_profiles')
+              .select('fullname, user_nickname, assistant_name, selected_personality')
+              .eq('id', session.user.id)
+              .maybeSingle();
 
-          if (uProfile) {
-            localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
+            if (profileErr) throw profileErr;
+
+            if (uProfile) {
+              localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
+              window.location.href = '/dashboard';
+            } else {
+              setStep(6); // Setup Profile
+            }
+          } catch (err: any) {
+            console.error('Profile fetch error on mount:', err);
             window.location.href = '/dashboard';
-          } else {
-            setStep(6); // Setup Profile
           }
         }
       }).catch((err: any) => {
@@ -114,16 +121,24 @@ export default function Home() {
           localStorage.setItem('access_token', session.access_token);
           localStorage.setItem('refresh_token', session.refresh_token);
           
-          const { data: uProfile } = await client.from('user_profiles')
-            .select('fullname, user_nickname, assistant_name, selected_personality')
-            .eq('id', session.user.id)
-            .maybeSingle();
+          try {
+            const { data: uProfile, error: profileErr } = await client.from('user_profiles')
+              .select('fullname, user_nickname, assistant_name, selected_personality')
+              .eq('id', session.user.id)
+              .maybeSingle();
 
-          if (uProfile) {
-            localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
+            if (profileErr) throw profileErr;
+
+            if (uProfile) {
+              localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
+              window.location.href = '/dashboard';
+            } else {
+              setStep(6);
+            }
+          } catch (err: any) {
+            console.error('Failed to query profile on auth state change:', err);
+            // Default fallback: assume profile exists (or let dashboard handle it) and redirect
             window.location.href = '/dashboard';
-          } else {
-            setStep(6);
           }
         } else if (event === 'SIGNED_OUT' || !session) {
           localStorage.removeItem('access_token');
