@@ -282,14 +282,26 @@ export default function DashboardPage() {
       return;
     }
 
-    // Attempt to load tokens from local storage (if cached previously)
-    const access = localStorage.getItem('access_token');
-    const refresh = localStorage.getItem('refresh_token');
-    if (access && refresh) {
-      initSession(client, access, refresh);
-    } else {
+    // Safely check active session from client
+    client.auth.getSession().then(({ data: { session } }: any) => {
+      if (session) {
+        localStorage.setItem('access_token', session.access_token);
+        localStorage.setItem('refresh_token', session.refresh_token);
+        initSession(client, session.access_token, session.refresh_token);
+      } else {
+        // Fallback to local storage keys
+        const access = localStorage.getItem('access_token');
+        const refresh = localStorage.getItem('refresh_token');
+        if (access && refresh) {
+          initSession(client, access, refresh);
+        } else {
+          setIsLoading(false);
+        }
+      }
+    }).catch((err: any) => {
+      console.error('Failed to get session:', err);
       setIsLoading(false);
-    }
+    });
 
     // 1. Listen to postMessage session tokens from Flutter WebView
     const handleMessage = async (event: MessageEvent) => {
@@ -925,13 +937,22 @@ export default function DashboardPage() {
   const mtKeys = getMetadataKeys(rawTransactions);
   const todoKeys = getMetadataKeys(rawTodos);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.error('Error signing out from Supabase:', err);
+      }
+    }
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('sim_user_profile');
     setIsAuthenticated(false);
     setInsights({});
     setRawTransactions([]);
     setRawTodos([]);
+    window.location.href = '/';
   };
 
   if (isLoading) {
@@ -949,7 +970,7 @@ export default function DashboardPage() {
         <div style={{ maxWidth: '400px', width: '100%' }}>
           <h2 style={{ fontFamily: 'var(--font-title)', marginBottom: '16px' }}>Dashboard Terkunci</h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '0.95rem' }}>
-            Halaman ini adalah dashboard privat yang hanya dapat diakses melalui aplikasi mobile AI Personal Assistant resmi.
+            Halaman ini adalah dashboard privat yang hanya dapat diakses setelah masuk ke akun Sobat AI.
           </p>
           
           {errorMsg && (
@@ -959,10 +980,13 @@ export default function DashboardPage() {
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <button className="btn" onClick={() => window.location.href = '/'}>
+              Buka Halaman Login / Registrasi
+            </button>
             <button className="btn btn-secondary" onClick={() => window.location.reload()}>
               Segarkan Sesi
             </button>
-            <button className="btn" onClick={loadMockData}>
+            <button className="btn btn-secondary" onClick={loadMockData}>
               Simulasikan Mode Demo (Developer)
             </button>
           </div>

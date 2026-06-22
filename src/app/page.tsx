@@ -2,26 +2,48 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import { createClient } from '@supabase/supabase-js';
 import './home.css';
 
-export default function Home() {
-  const [step, setStep] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
+// Initialize Supabase Client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-  // Step 1 States: Identitas
+const getSupabaseClient = () => {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return null;
+  }
+  return createClient(supabaseUrl, supabaseAnonKey);
+};
+
+export default function Home() {
+  // Steps: 
+  // 1 = Onboarding Intro Splash
+  // 2 = Auth Switcher (Login/Register/Demo)
+  // 3 = Login Form
+  // 4 = Register Form
+  // 5 = OTP Verification
+  // 6 = Profile Setup (fullname, nickname, assistantName)
+  // 7 = Pilih Ego AI (Personality Selector)
+  const [step, setStep] = useState(1);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [supabaseClient, setSupabaseClient] = useState<any>(null);
+
+  // Auth Inputs
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+
+  // Step 6 Inputs: Identitas
   const [fullname, setFullname] = useState('');
   const [nickname, setNickname] = useState('');
   const [assistantName, setAssistantName] = useState('');
 
-  // Step 2 States: Kepribadian AI
+  // Step 7 Inputs: Kepribadian AI
   const [selectedPersonality, setSelectedPersonality] = useState('witty_sidekick');
 
-  // Step 3 States: Sign Up
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-
-  // Step 4 States: OTP
-  const [generatedOtp, setGeneratedOtp] = useState('');
+  // OTP Inputs
   const [otpInputs, setOtpInputs] = useState<string[]>(['', '', '', '', '', '']);
   const [otpError, setOtpError] = useState('');
   const otpRefs = [
@@ -32,6 +54,34 @@ export default function Home() {
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null)
   ];
+
+  // Initialize Supabase Client in client side safely
+  useEffect(() => {
+    const client = getSupabaseClient();
+    setSupabaseClient(client);
+    
+    // Check if user is already authenticated
+    if (client) {
+      client.auth.getSession().then(({ data: { session } }: any) => {
+        if (session) {
+          // If already logged in, let's check if user profile exists
+          client.from('user_profiles')
+            .select('fullname, user_nickname, assistant_name, selected_personality')
+            .eq('id', session.user.id)
+            .maybeSingle()
+            .then(({ data: uProfile }: any) => {
+              if (uProfile) {
+                localStorage.setItem('access_token', session.access_token);
+                localStorage.setItem('refresh_token', session.refresh_token);
+                localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
+                // Automatically redirect if fully onboarded
+                window.location.href = '/dashboard';
+              }
+            });
+        }
+      });
+    }
+  }, []);
 
   // AI Personalities Metadata
   const personalities = [
@@ -67,42 +117,114 @@ export default function Home() {
     }
   ];
 
-  // Auto prefill mock email/password in signup step if empty
-  const handleNextStep1 = () => {
-    if (!fullname.trim() || !nickname.trim() || !assistantName.trim()) {
-      alert('Semua kolom identitas wajib diisi!');
-      return;
-    }
-    setStep(2);
-  };
-
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  // REAL SUPABASE LOGIN FLOW
+  const handleRealLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
-      alert('Email dan Kata Sandi wajib diisi!');
+      setAuthError('Email dan Kata Sandi wajib diisi!');
+      return;
+    }
+
+    setIsLoading(true);
+    setAuthError('');
+
+    try {
+      if (!supabaseClient) {
+        throw new Error('Supabase client tidak terdeteksi. Silakan coba kembali atau gunakan Mode Demo.');
+      }
+
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: email.trim(),
+        password: password
+      });
+
+      if (error) throw error;
+
+      // Save tokens
+      localStorage.setItem('access_token', data.session.access_token);
+      localStorage.setItem('refresh_token', data.session.refresh_token);
+
+      // Check if profile exists
+      const { data: uProfile, error: profileError } = await supabaseClient
+        .from('user_profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .maybeSingle();
+
+      if (uProfile) {
+        // Fully onboarded, load into local storage and redirect
+        localStorage.setItem('sim_user_profile', JSON.stringify({
+          fullname: uProfile.fullname,
+          user_nickname: uProfile.user_nickname,
+          assistant_name: uProfile.assistant_name,
+          selected_personality: uProfile.selected_personality
+        }));
+        window.location.href = '/dashboard';
+      } else {
+        // User created account but didn't finish profile
+        setStep(6);
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setAuthError(err.message || 'Gagal masuk. Periksa kembali email dan sandi Anda.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // REAL SUPABASE SIGNUP FLOW
+  const handleRealRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password.trim()) {
+      setAuthError('Email dan Kata Sandi wajib diisi!');
       return;
     }
     if (password.length < 6) {
-      alert('Kata Sandi minimal 6 karakter!');
+      setAuthError('Kata Sandi minimal 6 karakter!');
       return;
     }
 
-    // Generate random 6-digit simulated OTP code
-    const mockOtp = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(mockOtp);
-    setOtpInputs(['', '', '', '', '', '']);
-    setOtpError('');
-    setStep(4);
+    setIsLoading(true);
+    setAuthError('');
+
+    try {
+      if (!supabaseClient) {
+        throw new Error('Supabase client tidak terdeteksi. Gunakan Mode Demo jika berjalan offline.');
+      }
+
+      const { data, error } = await supabaseClient.auth.signUp({
+        email: email.trim(),
+        password: password
+      });
+
+      if (error) throw error;
+
+      if (data.session) {
+        // Automatically authenticated (email confirmation is disabled)
+        localStorage.setItem('access_token', data.session.access_token);
+        localStorage.setItem('refresh_token', data.session.refresh_token);
+        setStep(6); // Setup Profile
+      } else {
+        // Verification email/OTP required
+        setOtpInputs(['', '', '', '', '', '']);
+        setOtpError('');
+        setStep(5); // OTP input
+      }
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      setAuthError(err.message || 'Pendaftaran gagal. Silakan coba kembali.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // OTP Input Auto-focus next logic
   const handleOtpChange = (index: number, val: string) => {
     if (isNaN(Number(val))) return;
     const newOtp = [...otpInputs];
-    newOtp[index] = val.slice(-1); // Only keep the last character
+    newOtp[index] = val.slice(-1);
     setOtpInputs(newOtp);
 
-    // Auto-focus next input
     if (val !== '' && index < 5) {
       otpRefs[index + 1].current?.focus();
     }
@@ -114,77 +236,363 @@ export default function Home() {
     }
   };
 
-  const handleVerifyOtp = () => {
+  // REAL SUPABASE OTP VERIFICATION
+  const handleRealVerifyOtp = async () => {
     const enteredOtp = otpInputs.join('');
     if (enteredOtp.length < 6) {
       setOtpError('Harap isi lengkap 6 digit kode OTP');
       return;
     }
 
-    if (enteredOtp !== generatedOtp) {
-      setOtpError('Kode OTP salah! Silakan coba lagi.');
-      return;
-    }
+    setIsLoading(true);
+    setOtpError('');
 
-    // OTP Validated!
-    setStep(5);
+    try {
+      if (!supabaseClient) throw new Error('Supabase client is not loaded');
+
+      const { data, error } = await supabaseClient.auth.verifyOtp({
+        email: email.trim(),
+        token: enteredOtp,
+        type: 'signup'
+      });
+
+      if (error) throw error;
+
+      if (data.session) {
+        localStorage.setItem('access_token', data.session.access_token);
+        localStorage.setItem('refresh_token', data.session.refresh_token);
+      }
+
+      setStep(6); // Go to Profile Setup
+    } catch (err: any) {
+      console.error('OTP verification error:', err);
+      setOtpError(err.message || 'Kode OTP salah. Silakan periksa kotak masuk email Anda.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Step 6 handler: Go to Ego Selector
+  const handleNextProfileSetup = () => {
+    if (!fullname.trim() || !nickname.trim() || !assistantName.trim()) {
+      alert('Semua kolom profil wajib diisi!');
+      return;
+    }
+    setStep(7);
+  };
+
+  // FINAL STEP: SAVE PROFILE AND LAUNCH
+  const handleFinalizeProfile = async () => {
     setIsLoading(true);
+    try {
+      const userProfile = {
+        fullname: fullname.trim(),
+        user_nickname: nickname.trim(),
+        assistant_name: assistantName.trim(),
+        selected_personality: selectedPersonality
+      };
 
-    // Save profile to localStorage for dynamic dashboard loading
-    const userProfile = {
-      fullname: fullname.trim(),
-      user_nickname: nickname.trim(),
-      assistant_name: assistantName.trim(),
-      selected_personality: selectedPersonality
-    };
+      // Always save to localStorage for fallback compatibility
+      localStorage.setItem('sim_user_profile', JSON.stringify(userProfile));
 
-    localStorage.setItem('sim_user_profile', JSON.stringify(userProfile));
-    
-    // Simulate short network delay
-    setTimeout(() => {
-      setIsLoading(false);
+      if (isDemoMode || !supabaseClient) {
+        // Demo Mode / Simulation Bypass
+        setTimeout(() => {
+          setIsLoading(false);
+          window.location.href = '/dashboard';
+        }, 1200);
+        return;
+      }
+
+      // Live mode - Save to Remote database
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (!user) {
+        throw new Error('Sesi pengguna tidak ditemukan. Silakan masuk kembali.');
+      }
+
+      const { error } = await supabaseClient
+        .from('user_profiles')
+        .upsert({
+          id: user.id,
+          fullname: fullname.trim(),
+          user_nickname: nickname.trim(),
+          assistant_name: assistantName.trim(),
+          selected_personality: selectedPersonality,
+          dynamic_metadata: {
+            future_plans: []
+          }
+        });
+
+      if (error) throw error;
+
+      // Sync latest tokens just in case
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session) {
+        localStorage.setItem('access_token', session.access_token);
+        localStorage.setItem('refresh_token', session.refresh_token);
+      }
+
       window.location.href = '/dashboard';
-    }, 1200);
+    } catch (err: any) {
+      console.error('Failed to save profile:', err);
+      alert(err.message || 'Gagal menyimpan profil ke database.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="onboarding-container">
       <div className="wizard-card">
         
-        {/* Logo and Intro header */}
+        {/* Wizard Header */}
         <div className="wizard-header">
           <Image
             src="/next.svg"
             alt="Sobat AI Logo"
-            width={90}
-            height={20}
-            style={{ marginBottom: '12px', opacity: 0.85 }}
+            width={95}
+            height={22}
+            style={{ marginBottom: '16px', opacity: 0.9 }}
             priority
           />
           <h2>SOBAT AI — ASISTEN PRIBADI</h2>
           <p>
-            {step === 1 && 'Langkah 1: Tentukan nama panggilan Anda dan asisten AI Anda'}
-            {step === 2 && 'Langkah 2: Pilih kepribadian (Ego AI) untuk asisten Anda'}
-            {step === 3 && 'Langkah 3: Pendaftaran akun privat terenkripsi'}
-            {step === 4 && 'Langkah 4: Masukkan kode verifikasi OTP'}
-            {step === 5 && 'Langkah 5: Masuk dan hubungkan asisten pribadi Anda'}
+            {step === 1 && 'Selamat datang di Sobat AI — Asisten Waktu & Kognitif Anda'}
+            {step === 2 && 'Pilih cara untuk terhubung ke Dasbor Pribadi Anda'}
+            {step === 3 && 'Masuk dengan Akun Sesi Aktif'}
+            {step === 4 && 'Daftar Akun Baru (Database Aman & Terenkripsi)'}
+            {step === 5 && 'Verifikasi Kode OTP Email Anda'}
+            {step === 6 && 'Langkah Setup: Lengkapi profil nama Anda'}
+            {step === 7 && 'Langkah Akhir: Tentukan Ego Kepribadian Asisten AI'}
           </p>
         </div>
 
-        {/* Step dots indicator */}
+        {/* Step dots indicator (Only show for Profile Setup onward or show all) */}
         <div className="step-indicator">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className={`indicator-dot ${step === i ? 'active' : ''}`}></div>
-          ))}
+          {[1, 2, 3, 4, 5].map((i) => {
+            let active = false;
+            if (step <= 2 && i === 1) active = true;
+            else if ((step === 3 || step === 4) && i === 2) active = true;
+            else if (step === 5 && i === 3) active = true;
+            else if (step === 6 && i === 4) active = true;
+            else if (step === 7 && i === 5) active = true;
+            return <div key={i} className={`indicator-dot ${active ? 'active' : ''}`}></div>;
+          })}
         </div>
 
-        {/* Step 1: Identitas */}
+        {/* STEP 1: ONBOARDING INTRO (SPLASH) */}
         {step === 1 && (
+          <div className="form-input-container" style={{ textAlign: 'center', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', margin: '10px 0', textAlign: 'left' }}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <strong style={{ color: '#3b82f6', fontSize: '0.95rem' }}>⏱️ Analisis Pola Waktu & Kronotipe</strong>
+                <p style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '4px', lineHeight: '1.4' }}>
+                  Memetakan jam kerja produktif biologis Anda (Morning Lion vs Night Owl) untuk menjadwalkan tugas penting pada waktu fokus puncak Anda.
+                </p>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <strong style={{ color: '#a78bfa', fontSize: '0.95rem' }}>💳 Audit Kebocoran Malam (Leak Auditor)</strong>
+                <p style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '4px', lineHeight: '1.4' }}>
+                  Deteksi dini pengeluaran impulsif malam hari akibat stres kognitif dan dapatkan rekomendasi mitigasi anggaran instan.
+                </p>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <strong style={{ color: '#10b981', fontSize: '0.95rem' }}>🔒 Row Level Security & Enkripsi</strong>
+                <p style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '4px', lineHeight: '1.4' }}>
+                  Semua data riwayat, catatan keuangan, dan chat log diisolasi secara ketat per user menggunakan kebijakan RLS Supabase.
+                </p>
+              </div>
+            </div>
+
+            <button type="button" className="btn-wizard" style={{ width: '100%' }} onClick={() => setStep(2)}>
+              Mulai Sekarang &rarr;
+            </button>
+          </div>
+        )}
+
+        {/* STEP 2: AUTH SWITCHER */}
+        {step === 2 && (
+          <div className="form-input-container" style={{ gap: '16px' }}>
+            <button type="button" className="btn-wizard" style={{ width: '100%', padding: '16px' }} onClick={() => setStep(4)}>
+              📝 Daftar Akun Baru
+            </button>
+            <button type="button" className="btn-wizard-secondary" style={{ width: '100%', padding: '16px' }} onClick={() => setStep(3)}>
+              🔑 Masuk dengan Sesi Terdaftar
+            </button>
+            <div style={{ textAlign: 'center', margin: '8px 0', fontSize: '0.85rem', color: '#6b7280' }}>— atau —</div>
+            <button 
+              type="button" 
+              className="btn-wizard-secondary" 
+              style={{ width: '100%', padding: '14px', borderStyle: 'dashed', borderColor: '#f59e0b', color: '#f59e0b' }} 
+              onClick={() => {
+                setIsDemoMode(true);
+                setFullname('Budi Santoso (Demo)');
+                setNickname('Budi');
+                setAssistantName('Jarvis');
+                setStep(6);
+              }}
+            >
+              🚀 Coba Langsung (Mode Demo Offline)
+            </button>
+            
+            <div className="footer-nav">
+              <button type="button" className="btn-wizard-secondary" onClick={() => setStep(1)}>
+                &larr; Kembali
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: LOGIN FORM */}
+        {step === 3 && (
+          <form onSubmit={handleRealLogin} className="form-input-container">
+            {authError && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', color: '#ef4444', padding: '12px', borderRadius: '10px', fontSize: '0.85rem' }}>
+                {authError}
+              </div>
+            )}
+            
+            <div className="form-group">
+              <label className="form-group-label" htmlFor="login_email">Alamat Email</label>
+              <input
+                type="email"
+                id="login_email"
+                className="form-text-input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nama@email.com"
+                required
+              />
+            </div>
+            
+            <div className="form-group">
+              <label className="form-group-label" htmlFor="login_password">Kata Sandi</label>
+              <input
+                type="password"
+                id="login_password"
+                className="form-text-input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+              />
+            </div>
+
+            <div className="footer-nav">
+              <button type="button" className="btn-wizard-secondary" onClick={() => setStep(2)}>
+                &larr; Kembali
+              </button>
+              <button type="submit" className="btn-wizard" disabled={isLoading}>
+                {isLoading ? 'Menghubungkan...' : 'Masuk Akun'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* STEP 4: REGISTER FORM */}
+        {step === 4 && (
+          <form onSubmit={handleRealRegister} className="form-input-container">
+            {authError && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', color: '#ef4444', padding: '12px', borderRadius: '10px', fontSize: '0.85rem' }}>
+                {authError}
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-group-label" htmlFor="reg_email">Alamat Email Aktif</label>
+              <input
+                type="email"
+                id="reg_email"
+                className="form-text-input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="contoh@email.com"
+                required
+              />
+            </div>
+            
+            <div className="form-group">
+              <label className="form-group-label" htmlFor="reg_password">Kata Sandi (Min. 6 karakter)</label>
+              <input
+                type="password"
+                id="reg_password"
+                className="form-text-input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '4px' }}>
+              <input type="checkbox" id="terms" defaultChecked style={{ marginTop: '4px', cursor: 'pointer' }} required />
+              <label htmlFor="terms" style={{ fontSize: '0.8rem', color: '#9ca3af', cursor: 'pointer', lineHeight: 1.4 }}>
+                Saya setuju dengan enkripsi data pribadi, sensor PII otomatis, dan aturan isolasi Row Level Security (RLS).
+              </label>
+            </div>
+
+            <div className="footer-nav">
+              <button type="button" className="btn-wizard-secondary" onClick={() => setStep(2)}>
+                &larr; Kembali
+              </button>
+              <button type="submit" className="btn-wizard" disabled={isLoading}>
+                {isLoading ? 'Membuat Akun...' : 'Daftar Akun'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* STEP 5: OTP VERIFICATION */}
+        {step === 5 && (
           <div className="form-input-container">
+            <div className="otp-container">
+              <label className="form-group-label" style={{ textAlign: 'center', lineHeight: 1.4 }}>
+                Kami telah mengirimkan 6-digit kode verifikasi ke email <strong style={{ color: '#fff' }}>{email}</strong>. 
+                Masukkan kode tersebut di bawah ini untuk mengaktifkan sesi:
+              </label>
+              
+              <div className="otp-inputs">
+                {otpInputs.map((digit, idx) => (
+                  <input
+                    key={idx}
+                    type="text"
+                    ref={otpRefs[idx]}
+                    className="otp-box"
+                    value={digit}
+                    onChange={(e) => handleOtpChange(idx, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                    maxLength={1}
+                  />
+                ))}
+              </div>
+
+              {otpError && (
+                <div style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 500, textAlign: 'center' }}>
+                  {otpError}
+                </div>
+              )}
+            </div>
+
+            <div className="footer-nav">
+              <button type="button" className="btn-wizard-secondary" onClick={() => setStep(4)}>
+                &larr; Ubah Email
+              </button>
+              <button type="button" className="btn-wizard" onClick={handleRealVerifyOtp} disabled={isLoading}>
+                {isLoading ? 'Memverifikasi...' : 'Verifikasi & Lanjut'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 6: PROFILE SETUP */}
+        {step === 6 && (
+          <div className="form-input-container">
+            {isDemoMode && (
+              <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid #f59e0b', color: '#f59e0b', padding: '10px 14px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 500 }}>
+                ⚠️ Berjalan dalam Mode Demo (Bypass Auth). Profil ini hanya akan disimpan sementara di peramban.
+              </div>
+            )}
+
             <div className="form-group">
               <label className="form-group-label" htmlFor="user_fullname">Nama Lengkap Anda</label>
               <input
@@ -197,6 +605,7 @@ export default function Home() {
                 required
               />
             </div>
+            
             <div className="form-group">
               <label className="form-group-label" htmlFor="user_nickname">Nama Panggilan Anda</label>
               <input
@@ -209,6 +618,7 @@ export default function Home() {
                 required
               />
             </div>
+            
             <div className="form-group">
               <label className="form-group-label" htmlFor="assistant_name">Nama Asisten AI Anda</label>
               <input
@@ -222,16 +632,30 @@ export default function Home() {
               />
             </div>
 
-            <div className="footer-nav" style={{ justifyContent: 'flex-end' }}>
-              <button type="button" className="btn-wizard" onClick={handleNextStep1}>
-                Pilih Ego AI &rarr;
+            <div className="footer-nav">
+              <button 
+                type="button" 
+                className="btn-wizard-secondary" 
+                onClick={() => {
+                  if (isDemoMode) {
+                    setIsDemoMode(false);
+                    setStep(2);
+                  } else {
+                    setStep(3);
+                  }
+                }}
+              >
+                &larr; Kembali
+              </button>
+              <button type="button" className="btn-wizard" onClick={handleNextProfileSetup}>
+                Pilih Kepribadian AI &rarr;
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 2: Ego Selection */}
-        {step === 2 && (
+        {/* STEP 7: PERSONALITY SELECTOR */}
+        {step === 7 && (
           <div className="form-input-container">
             <label className="form-group-label">Pilih Kepribadian Asisten AI (Ego AI)</label>
             
@@ -253,149 +677,14 @@ export default function Home() {
             </div>
 
             <div className="footer-nav">
-              <button type="button" className="btn-wizard-secondary" onClick={() => setStep(1)}>
+              <button type="button" className="btn-wizard-secondary" onClick={() => setStep(6)}>
                 &larr; Kembali
               </button>
-              <button type="button" className="btn-wizard" onClick={() => setStep(3)}>
-                Daftar Akun &rarr;
+              <button type="button" className="btn-wizard" onClick={handleFinalizeProfile} disabled={isLoading}>
+                {isLoading ? 'Menyiapkan Dasbor...' : 'Selesaikan & Buka Dashboard'}
               </button>
             </div>
           </div>
-        )}
-
-        {/* Step 3: Sign Up Form */}
-        {step === 3 && (
-          <form onSubmit={handleRegisterSubmit} className="form-input-container">
-            <div className="form-group">
-              <label className="form-group-label" htmlFor="signup_email">Alamat Email</label>
-              <input
-                type="email"
-                id="signup_email"
-                className="form-text-input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="budi.santoso@example.com"
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-group-label" htmlFor="signup_password">Kata Sandi (Min. 6 karakter)</label>
-              <input
-                type="password"
-                id="signup_password"
-                className="form-text-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-              />
-            </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '4px' }}>
-              <input type="checkbox" id="terms" defaultChecked style={{ marginTop: '4px', cursor: 'pointer' }} required />
-              <label htmlFor="terms" style={{ fontSize: '0.8rem', color: '#9ca3af', cursor: 'pointer', lineHeight: 1.4 }}>
-                Saya setuju dengan enkripsi data chat, RLS database pribadi, dan sensor PII otomatis Sobat AI.
-              </label>
-            </div>
-
-            <div className="footer-nav">
-              <button type="button" className="btn-wizard-secondary" onClick={() => setStep(2)}>
-                &larr; Kembali
-              </button>
-              <button type="submit" className="btn-wizard">
-                Kirim Kode OTP &rarr;
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Step 4: OTP Verification Code */}
-        {step === 4 && (
-          <div className="form-input-container">
-            <div className="otp-container">
-              <label className="form-group-label" style={{ textAlign: 'center' }}>
-                Kami telah mengirimkan 6-digit kode verifikasi simulasi. Masukkan kode tersebut di bawah ini:
-              </label>
-              
-              <div className="otp-inputs">
-                {otpInputs.map((digit, idx) => (
-                  <input
-                    key={idx}
-                    type="text"
-                    ref={otpRefs[idx]}
-                    className="otp-box"
-                    value={digit}
-                    onChange={(e) => handleOtpChange(idx, e.target.value)}
-                    onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                    maxLength={1}
-                  />
-                ))}
-              </div>
-
-              {otpError && (
-                <div style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 500 }}>
-                  {otpError}
-                </div>
-              )}
-
-              {/* Simulation Banner showing OTP Code */}
-              <div className="sim-otp-banner">
-                <span>[SIMULASI BANNER OTP]</span>
-                <span>Gunakan kode verifikasi berikut untuk melanjutkan pendaftaran:</span>
-                <strong>{generatedOtp}</strong>
-              </div>
-            </div>
-
-            <div className="footer-nav">
-              <button type="button" className="btn-wizard-secondary" onClick={() => setStep(3)}>
-                &larr; Kembali
-              </button>
-              <button type="button" className="btn-wizard" onClick={handleVerifyOtp}>
-                Verifikasi Kode &rarr;
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 5: Login */}
-        {step === 5 && (
-          <form onSubmit={handleLoginSubmit} className="form-input-container">
-            <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', color: '#10b981', padding: '12px 16px', borderRadius: '10px', fontSize: '0.85rem', fontWeight: 500, textAlign: 'center', marginBottom: '8px' }}>
-              ✓ Akun Anda berhasil diverifikasi. Silakan masuk untuk mengaktifkan sesi.
-            </div>
-
-            <div className="form-group">
-              <label className="form-group-label" htmlFor="login_email">Email</label>
-              <input
-                type="email"
-                id="login_email"
-                className="form-text-input"
-                value={email}
-                disabled
-                style={{ opacity: 0.6, cursor: 'not-allowed' }}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-group-label" htmlFor="login_password">Kata Sandi</label>
-              <input
-                type="password"
-                id="login_password"
-                className="form-text-input"
-                value={password}
-                disabled
-                style={{ opacity: 0.6, cursor: 'not-allowed' }}
-              />
-            </div>
-
-            <div className="footer-nav" style={{ justifyContent: 'flex-end' }}>
-              <button type="submit" className="btn-wizard" disabled={isLoading} style={{ width: '100%' }}>
-                {isLoading ? (
-                  <span className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px', borderColor: '#fff', borderTopColor: 'transparent', marginBottom: 0 }}></span>
-                ) : (
-                  'Masuk & Buka Dashboard'
-                )}
-              </button>
-            </div>
-          </form>
         )}
 
       </div>
