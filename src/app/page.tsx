@@ -566,52 +566,25 @@ export default function Home() {
           </form>
         )}
 
-        {/* STEP 5: EMAIL CONFIRMATION / OTP VERIFICATION */}
+        {/* STEP 5: EMAIL CONFIRMATION WAITING SCREEN */}
         {step === 5 && (
-          <div className="form-input-container">
-            <div className="otp-container">
-              <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid #3b82f6', color: '#60a5fa', padding: '16px', borderRadius: '12px', fontSize: '0.88rem', lineHeight: 1.5, textAlign: 'center', marginBottom: '8px', width: '100%' }}>
-                📧 <strong>Konfirmasi Email Dikirim!</strong><br />
-                Silakan buka email <strong style={{ color: '#fff' }}>{email}</strong> dan klik <strong>Link Verifikasi/Tautan Konfirmasi</strong> yang dikirim oleh Supabase.<br />
-                <span style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '6px', display: 'block' }}>
-                  Halaman ini akan otomatis mendeteksi dan mengalihkan Anda setelah tautan diklik.
-                </span>
-              </div>
-
-              <div style={{ textAlign: 'center', margin: '8px 0', fontSize: '0.8rem', color: '#4b5563' }}>— ATAU MASUKKAN KODE OTP JIKA ADA —</div>
-
-              <label className="form-group-label" style={{ textAlign: 'center', display: 'block' }}>
-                Masukkan 6-digit kode verifikasi Anda di bawah ini:
-              </label>
-              
-              <div className="otp-inputs">
-                {otpInputs.map((digit, idx) => (
-                  <input
-                    key={idx}
-                    type="text"
-                    ref={otpRefs[idx]}
-                    className="otp-box"
-                    value={digit}
-                    onChange={(e) => handleOtpChange(idx, e.target.value)}
-                    onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                    maxLength={1}
-                  />
-                ))}
-              </div>
-
-              {otpError && (
-                <div style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 500, textAlign: 'center' }}>
-                  {otpError}
-                </div>
-              )}
+          <div className="form-input-container" style={{ textAlign: 'center', gap: '24px' }}>
+            <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', color: '#60a5fa', padding: '24px', borderRadius: '16px', fontSize: '0.95rem', lineHeight: 1.6, textAlign: 'center' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '16px' }}>✉️</div>
+              <strong style={{ fontSize: '1.1rem', color: '#fff', display: 'block', marginBottom: '8px' }}>Tautan Konfirmasi Dikirim!</strong>
+              Kami telah mengirimkan tautan konfirmasi ke email:<br />
+              <strong style={{ color: '#fff', fontSize: '1rem', display: 'block', margin: '6px 0' }}>{email}</strong>
+              Silakan buka kotak masuk email Anda dan klik **Link Konfirmasi** untuk menyelesaikan pendaftaran.
             </div>
 
-            <div className="footer-nav">
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+              <span className="spinner" style={{ width: '28px', height: '28px', borderWidth: '3px', borderColor: '#3b82f6', borderTopColor: 'transparent', margin: '0 auto' }}></span>
+              <span style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Menunggu Anda mengklik link konfirmasi...</span>
+            </div>
+
+            <div className="footer-nav" style={{ justifyContent: 'center' }}>
               <button type="button" className="btn-wizard-secondary" onClick={() => setStep(4)}>
-                &larr; Ubah Email
-              </button>
-              <button type="button" className="btn-wizard" onClick={handleRealVerifyOtp} disabled={isLoading}>
-                {isLoading ? 'Memverifikasi...' : 'Verifikasi Kode'}
+                &larr; Ganti Email atau Coba Lagi
               </button>
             </div>
           </div>
