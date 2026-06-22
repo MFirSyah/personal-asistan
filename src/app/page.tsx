@@ -70,47 +70,43 @@ export default function Home() {
   ];
 
   // Initialize Supabase Client in client side safely
+  // Initialize Supabase Client in client side safely
   useEffect(() => {
     const client = getSupabaseClient();
     setSupabaseClient(client);
     
     if (client) {
-      // 1. Check existing session with a 3-second timeout to prevent deadlocks from stale token refresh calls
-      const sessionPromise = client.auth.getSession();
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Session check timed out')), 3000)
-      );
-
-      Promise.race([sessionPromise, timeoutPromise])
-        .then(async (res: any) => {
-          const session = res?.data?.session;
-          const error = res?.error;
-          if (error) throw error;
-          
-          if (session) {
-            localStorage.setItem('access_token', session.access_token);
-            localStorage.setItem('refresh_token', session.refresh_token);
-            
-            const { data: uProfile } = await client.from('user_profiles')
-              .select('fullname, user_nickname, assistant_name, selected_personality')
-              .eq('id', session.user.id)
-              .maybeSingle();
-
-            if (uProfile) {
-              localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
-              window.location.href = '/dashboard';
-            } else {
-              setStep(6); // Setup Profile
-            }
-          }
-        })
-        .catch(err => {
-          console.warn('Auto-login session restoration skipped or timed out:', err);
-          // Safe cleanup of stale data to release locks
+      // 1. Check existing session
+      client.auth.getSession().then(async (res: any) => {
+        const session = res?.data?.session;
+        const error = res?.error;
+        if (error) {
+          console.error('Session check error:', error);
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
           client.auth.signOut().catch(() => {});
-        });
+          return;
+        }
+
+        if (session) {
+          localStorage.setItem('access_token', session.access_token);
+          localStorage.setItem('refresh_token', session.refresh_token);
+          
+          const { data: uProfile } = await client.from('user_profiles')
+            .select('fullname, user_nickname, assistant_name, selected_personality')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          if (uProfile) {
+            localStorage.setItem('sim_user_profile', JSON.stringify(uProfile));
+            window.location.href = '/dashboard';
+          } else {
+            setStep(6); // Setup Profile
+          }
+        }
+      }).catch((err: any) => {
+        console.error('Auto-login session restoration failed:', err);
+      });
 
       // 2. Listen to active auth state changes (e.g. from magic links, redirect_to callbacks)
       const { data: { subscription } } = client.auth.onAuthStateChange(async (event: string, session: any) => {
