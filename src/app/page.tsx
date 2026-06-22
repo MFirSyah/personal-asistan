@@ -33,7 +33,12 @@ export default function Home() {
   // Auth Inputs
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [authError, setAuthError] = useState('');
+
+  // Resend Verification Email Cooldown
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendMessage, setResendMessage] = useState('');
 
   // Step 6 Inputs: Identitas
   const [fullname, setFullname] = useState('');
@@ -196,15 +201,53 @@ export default function Home() {
     }
   };
 
+  // Resend Email Cooldown Effect
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => {
+      setResendCooldown(prev => prev - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  // Kirim Ulang Email Verifikasi
+  const handleResendEmail = async () => {
+    if (resendCooldown > 0) return;
+    setIsLoading(true);
+    setResendMessage('');
+    try {
+      if (!supabaseClient) throw new Error('Supabase client tidak terdeteksi.');
+      const { error } = await supabaseClient.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: {
+          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+        }
+      });
+      if (error) throw error;
+      setResendMessage('Tautan konfirmasi baru berhasil dikirim!');
+      setResendCooldown(60); // 60 seconds cooldown
+    } catch (err: any) {
+      console.error('Failed to resend confirmation email:', err);
+      setResendMessage(`Gagal mengirim ulang: ${err.message || 'Silakan coba lagi.'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // REAL SUPABASE SIGNUP FLOW
   const handleRealRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      setAuthError('Email dan Kata Sandi wajib diisi!');
+    if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
+      setAuthError('Semua kolom formulir wajib diisi!');
       return;
     }
     if (password.length < 6) {
       setAuthError('Kata Sandi minimal 6 karakter!');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setAuthError('Kata Sandi dan Konfirmasi Kata Sandi tidak cocok!');
       return;
     }
 
@@ -218,7 +261,10 @@ export default function Home() {
 
       const { data, error } = await supabaseClient.auth.signUp({
         email: email.trim(),
-        password: password
+        password: password,
+        options: {
+          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+        }
       });
 
       if (error) throw error;
@@ -229,10 +275,10 @@ export default function Home() {
         localStorage.setItem('refresh_token', data.session.refresh_token);
         setStep(6); // Setup Profile
       } else {
-        // Verification email/OTP required
-        setOtpInputs(['', '', '', '', '', '']);
-        setOtpError('');
-        setStep(5); // OTP input
+        // Verification email required
+        setResendMessage('');
+        setResendCooldown(30); // 30s initial resend cooldown
+        setStep(5); // Link confirmation waiting screen
       }
     } catch (err: any) {
       console.error('Registration error:', err);
@@ -548,6 +594,19 @@ export default function Home() {
               />
             </div>
 
+            <div className="form-group">
+              <label className="form-group-label" htmlFor="reg_password_confirm">Konfirmasi Kata Sandi</label>
+              <input
+                type="password"
+                id="reg_password_confirm"
+                className="form-text-input"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+              />
+            </div>
+
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '4px' }}>
               <input type="checkbox" id="terms" defaultChecked style={{ marginTop: '4px', cursor: 'pointer' }} required />
               <label htmlFor="terms" style={{ fontSize: '0.8rem', color: '#9ca3af', cursor: 'pointer', lineHeight: 1.4 }}>
@@ -580,6 +639,22 @@ export default function Home() {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
               <span className="spinner" style={{ width: '28px', height: '28px', borderWidth: '3px', borderColor: '#3b82f6', borderTopColor: 'transparent', margin: '0 auto' }}></span>
               <span style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Menunggu Anda mengklik link konfirmasi...</span>
+              
+              <button 
+                type="button" 
+                className="btn-wizard-secondary" 
+                style={{ marginTop: '12px', fontSize: '0.85rem', padding: '8px 16px' }}
+                disabled={resendCooldown > 0 || isLoading}
+                onClick={handleResendEmail}
+              >
+                {resendCooldown > 0 ? `Kirim Ulang Link (${resendCooldown}s)` : '✉️ Kirim Ulang Link Konfirmasi'}
+              </button>
+              
+              {resendMessage && (
+                <div style={{ color: resendMessage.includes('Gagal') ? '#ef4444' : '#10b981', fontSize: '0.8rem', marginTop: '4px', fontWeight: 500 }}>
+                  {resendMessage}
+                </div>
+              )}
             </div>
 
             <div className="footer-nav" style={{ justifyContent: 'center' }}>
