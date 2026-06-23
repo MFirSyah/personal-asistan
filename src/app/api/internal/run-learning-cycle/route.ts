@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       const { data: chatMessages } = await supabaseAdmin
         .from('app_chat_messages')
         .select('sender_id, sender_personality_id, message, created_at')
-        .or(`room_id.is.null,and(sender_id.eq.${userId})`) // select private chat or user messages
+        .or(`and(room_id.is.null,user_id.eq.${userId}),and(room_id.not.is.null,sender_id.eq.${userId})`) // select private chat of this user or user group messages
         .order('created_at', { ascending: false })
         .limit(30);
 

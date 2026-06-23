@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS app_chat_messages (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     room_id UUID REFERENCES app_chat_rooms(id) ON DELETE CASCADE, -- NULL jika private chat ke AI
     sender_id UUID REFERENCES user_profiles(id) ON DELETE SET NULL, -- NULL jika pengirimnya adalah AI
+    user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE, -- pemilik chat privat
     sender_personality_id VARCHAR(50) REFERENCES ai_personalities(id) ON DELETE SET NULL,
     message TEXT NOT NULL,  -- catatan: ini wajib sudah versi yang DI-SCRUB
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -242,7 +243,7 @@ CREATE POLICY "Hapus koneksi sendiri" ON ai_mutual_connections
 -- 6. Chat Messages
 CREATE POLICY "Lihat pesan sesuai konteks" ON app_chat_messages
     FOR SELECT USING (
-        (room_id IS NULL AND sender_id = auth.uid())
+        (room_id IS NULL AND user_id = auth.uid())
         OR
         (room_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM app_room_members m
@@ -252,12 +253,12 @@ CREATE POLICY "Lihat pesan sesuai konteks" ON app_chat_messages
 
 CREATE POLICY "Kirim pesan sesuai konteks" ON app_chat_messages
     FOR INSERT WITH CHECK (
-        (room_id IS NULL AND sender_id = auth.uid())
+        (room_id IS NULL AND user_id = auth.uid() AND sender_id = auth.uid())
         OR
         (room_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM app_room_members m
             WHERE m.room_id = app_chat_messages.room_id AND m.user_id = auth.uid()
-        ))
+        ) AND sender_id = auth.uid())
     );
 
 -- 7. To-Do Lists

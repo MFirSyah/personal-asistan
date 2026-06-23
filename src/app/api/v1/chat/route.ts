@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
       .insert({
         room_id: roomId,
         sender_id: userId,
+        user_id: userId,
         sender_personality_id: null,
         message: scrubbedMessage,
       });
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest) {
     if (roomId) {
       query = query.eq('room_id', roomId);
     } else {
-      query = query.is('room_id', null).eq('sender_id', userId);
+      query = query.is('room_id', null).eq('user_id', userId);
     }
 
     const { data: historyData } = await query;
@@ -173,6 +174,7 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin.from('app_chat_messages').insert({
       room_id: roomId,
       sender_id: null,
+      user_id: userId,
       sender_personality_id: personalityId,
       message: fullResponse,
     });

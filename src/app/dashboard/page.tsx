@@ -79,6 +79,27 @@ export default function DashboardPage() {
   const [mtDate, setMtDate] = useState('');
   const [mtTime, setMtTime] = useState('');
   const [mtMetadata, setMtMetadata] = useState<Record<string, string>>({});
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+
+  const handleReceiptFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setReceiptFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setReceiptPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleClearReceipt = () => {
+    setReceiptFile(null);
+    setReceiptPreview(null);
+    const fileInput = document.getElementById('receipt-upload') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
+  };
 
   // To-Do List Form State
   const [todoTaskName, setTodoTaskName] = useState('');
@@ -324,6 +345,13 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    // Check if we are in demo mode
+    const isDemoModeToken = typeof window !== 'undefined' && localStorage.getItem('is_demo_mode') === 'true';
+    if (isDemoModeToken) {
+      loadMockData();
+      return;
+    }
+
     const client = getSupabaseClient();
     setSupabase(client);
 
@@ -750,18 +778,46 @@ export default function DashboardPage() {
           throw new Error('Deskripsi transaksi wajib diisi');
         }
 
-        const newTx = {
-          amount: amountNum,
-          type: mtType,
-          description: mtDescription,
-          transaction_date: mtDate || new Date().toISOString().split('T')[0],
-          dynamic_metadata: { ...mtMetadata, jam: mtTime || new Date().toTimeString().slice(0, 5) },
-        };
+        let finalMetadata: Record<string, any> = { ...mtMetadata, jam: mtTime || new Date().toTimeString().slice(0, 5) };
 
         if (supabase) {
           // 1. Get authenticated user
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) throw new Error('Pengguna tidak terautentikasi.');
+
+          // 1.5 Upload receipt if file is selected
+          if (receiptFile) {
+            try {
+              const fileExt = receiptFile.name.split('.').pop();
+              const fileName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+              
+              const { error: uploadError } = await supabase.storage
+                .from('receipts')
+                .upload(fileName, receiptFile, {
+                  cacheControl: '3600',
+                  upsert: false
+                });
+
+              if (uploadError) throw uploadError;
+
+              const { data: { publicUrl } } = supabase.storage
+                .from('receipts')
+                .getPublicUrl(fileName);
+
+              finalMetadata = { ...finalMetadata, receipt_url: publicUrl };
+            } catch (storageErr: any) {
+              console.error('Storage upload failed:', storageErr);
+              alert(`Peringatan: Gagal mengunggah foto struk (${storageErr.message || 'Error'}). Transaksi tetap akan disimpan.`);
+            }
+          }
+
+          const newTx = {
+            amount: amountNum,
+            type: mtType,
+            description: mtDescription,
+            transaction_date: mtDate || new Date().toISOString().split('T')[0],
+            dynamic_metadata: finalMetadata,
+          };
 
           // 2. Insert to database
           const { error } = await supabase
@@ -808,6 +864,17 @@ export default function DashboardPage() {
           }
         } else {
           // Simulation mode: append to state and recalculate
+          if (receiptPreview) {
+            finalMetadata = { ...finalMetadata, receipt_url: receiptPreview };
+          }
+          const newTx = {
+            amount: amountNum,
+            type: mtType,
+            description: mtDescription,
+            transaction_date: mtDate || new Date().toISOString().split('T')[0],
+            dynamic_metadata: finalMetadata,
+          };
+
           const simulatedTx = {
             id: String(Date.now()),
             ...newTx
@@ -821,6 +888,10 @@ export default function DashboardPage() {
         // Reset form
         setMtAmount('');
         setMtDescription('');
+        setReceiptFile(null);
+        setReceiptPreview(null);
+        const fileInput = document.getElementById('receipt-upload') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
         setMtMetadata({});
       } else {
         if (!todoTaskName) {
@@ -963,6 +1034,7 @@ export default function DashboardPage() {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('sim_user_profile');
+    localStorage.removeItem('is_demo_mode');
     setIsAuthenticated(false);
     setInsights({});
     setRawTransactions([]);
@@ -1017,7 +1089,7 @@ export default function DashboardPage() {
   const progressRatio = totalIncome > 0 ? Math.min((totalExpense / totalIncome) * 100, 100) : 0;
   const consistencyScore = insights.consistency_graph?.sources_metadata?.consistencyRate || 0;
 
-  const isDemo = !supabase || profile.fullname?.includes('(Demo)') || profile.user_nickname?.includes('Demo');
+  const isDemo = !supabase || (typeof window !== 'undefined' && localStorage.getItem('is_demo_mode') === 'true') || profile.fullname?.includes('(Demo)') || profile.user_nickname?.includes('Demo');
 
   const getUsageDays = () => {
     if (!profile || !profile.created_at) return 1;
@@ -1776,6 +1848,44 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
+                      <div className="form-row" style={{ marginTop: '16px' }}>
+                        <div className="form-group" style={{ width: '100%' }}>
+                          <label htmlFor="receipt-upload" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            📸 Unggah Foto Struk Belanja (Opsional)
+                          </label>
+                          <input 
+                            type="file" 
+                            id="receipt-upload" 
+                            accept="image/*" 
+                            className="form-control"
+                            onChange={handleReceiptFileChange}
+                            style={{ padding: '8px', cursor: 'pointer' }}
+                          />
+                          {receiptPreview && (
+                            <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '16px', background: 'rgba(255, 255, 255, 0.02)', padding: '10px', borderRadius: '10px', border: '1px solid var(--border-glass)', width: 'fit-content' }}>
+                              <img 
+                                src={receiptPreview} 
+                                alt="Receipt Preview" 
+                                style={{ maxWidth: '100px', maxHeight: '100px', borderRadius: '6px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }} 
+                              />
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                  {receiptFile ? receiptFile.name : 'Preview Struk'}
+                                </span>
+                                <button 
+                                  type="button" 
+                                  className="btn-remove" 
+                                  style={{ width: 'fit-content', padding: '2px 8px', fontSize: '0.75rem' }} 
+                                  onClick={handleClearReceipt}
+                                >
+                                  Batal Unggah
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
                       {/* Dynamic Metadata Section */}
                       <div className="metadata-section">
                         <h4>Dynamic Metadata (Scanned & Custom)</h4>
@@ -2003,7 +2113,29 @@ export default function DashboardPage() {
                     <tbody>
                       {rawTransactions.map((tx: any, idx: number) => (
                         <tr key={tx.id || idx}>
-                          <td style={{ fontWeight: 500 }}>{tx.description}</td>
+                          <td style={{ fontWeight: 500 }}>
+                            {tx.description}
+                            {tx.dynamic_metadata?.receipt_url && (
+                              <div style={{ marginTop: '6px' }}>
+                                <a 
+                                  href={tx.dynamic_metadata.receipt_url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  style={{ 
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    gap: '4px', 
+                                    color: 'var(--color-primary)', 
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    textDecoration: 'underline'
+                                  }}
+                                >
+                                  🧾 Lihat Struk
+                                </a>
+                              </div>
+                            )}
+                          </td>
                           <td>
                             <span style={{ 
                               padding: '4px 10px', 

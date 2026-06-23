@@ -84,11 +84,13 @@ export default function Home() {
           console.error('Session check error:', error);
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
+          localStorage.removeItem('is_demo_mode');
           client.auth.signOut().catch(() => {});
           return;
         }
 
         if (session) {
+          localStorage.removeItem('is_demo_mode');
           localStorage.setItem('access_token', session.access_token);
           localStorage.setItem('refresh_token', session.refresh_token);
           
@@ -118,6 +120,7 @@ export default function Home() {
       // 2. Listen to active auth state changes (e.g. from magic links, redirect_to callbacks)
       const { data: { subscription } } = client.auth.onAuthStateChange(async (event: string, session: any) => {
         if (session) {
+          localStorage.removeItem('is_demo_mode');
           localStorage.setItem('access_token', session.access_token);
           localStorage.setItem('refresh_token', session.refresh_token);
           
@@ -144,6 +147,7 @@ export default function Home() {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
           localStorage.removeItem('sim_user_profile');
+          localStorage.removeItem('is_demo_mode');
         }
       });
 
@@ -383,11 +387,14 @@ export default function Home() {
 
       if (isDemoMode || !supabaseClient) {
         // Demo Mode / Simulation Bypass
+        localStorage.setItem('is_demo_mode', 'true');
         setTimeout(() => {
           setIsLoading(false);
           window.location.href = '/dashboard';
         }, 1200);
         return;
+      } else {
+        localStorage.removeItem('is_demo_mode');
       }
 
       // Live mode - Save to Remote database
@@ -512,6 +519,7 @@ export default function Home() {
               style={{ width: '100%', padding: '14px', borderStyle: 'dashed', borderColor: '#f59e0b', color: '#f59e0b' }} 
               onClick={() => {
                 setIsDemoMode(true);
+                localStorage.setItem('is_demo_mode', 'true');
                 setFullname('Budi Santoso (Demo)');
                 setNickname('Budi');
                 setAssistantName('Jarvis');
@@ -793,6 +801,7 @@ export default function Home() {
                 onClick={() => {
                   if (isDemoMode) {
                     setIsDemoMode(false);
+                    localStorage.removeItem('is_demo_mode');
                     setStep(2);
                   } else {
                     setStep(3);
