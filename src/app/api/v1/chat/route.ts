@@ -1,3 +1,4 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyGatewayAndUser } from '@/lib/middleware/gateway';
 import { scrubPII } from '@/lib/utils/scrubber';
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { message, room_id } = body;
+    const { message, room_id, language } = body;
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -105,11 +106,71 @@ export async function POST(req: NextRequest) {
       .eq('id', personalityId)
       .single();
 
-    const personalityTemplate =
+    let personalityTemplate =
       personality?.system_instruction_template ||
       'Kamu adalah {assistant_name}, asisten pribadi {user_nickname}.';
+
+    // Inject language instruction
+    if (language === 'en') {
+      personalityTemplate += '\n\nIMPORTANT INSTRUCTION: Please strictly respond in English, but keep the personality vibe.';
+    } else {
+      personalityTemplate += '\n\nIMPORTANT INSTRUCTION: Please strictly respond in Indonesian (Bahasa Indonesia), keeping the personality vibe.';
+    }
+    
+    // Inject Long Term Memory if it exists
+    if (profile?.dynamic_metadata?.long_term_memory) {
+      personalityTemplate += `\n\nLONG TERM MEMORY ABOUT USER (Use this context if relevant, but do not mention it explicitly unless asked):\n${profile.dynamic_metadata.long_term_memory}`;
+    }
+
     const temperature = Number(personality?.temperature ?? 0.3);
     const topP = Number(personality?.top_p ?? 0.95);
+
+    // 5.5. Long Term Memory Processing Pipeline (Async)
+    const processLongTermMemory = async () => {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const { data: oldMsgs } = await supabaseAdmin
+        .from('app_chat_messages')
+        .select('id, message, sender_personality_id, created_at')
+        .eq('user_id', userId)
+        .is('room_id', null)
+        .lt('created_at', sevenDaysAgo.toISOString())
+        .limit(50);
+        
+      if (oldMsgs && oldMsgs.length > 0) {
+        try {
+          const oldChatText = oldMsgs.map(m => `${m.sender_personality_id ? assistantName : userNickname}: ${m.message}`).join('\n');
+          const memoryPrompt = `Extract key facts, user preferences, events, and important context from this chat history to build long-term memory for an AI assistant. Keep it concise in bullet points.\n\nChat:\n${oldChatText}`;
+          
+          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+          const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+          
+          const result = await model.generateContent(memoryPrompt);
+          const newMemory = result.response.text();
+          
+          const existingMemory = profile?.dynamic_metadata?.long_term_memory || '';
+          let finalMemory = newMemory;
+          
+          if (existingMemory) {
+            const combinedPrompt = `Merge these two memory contexts into a single, concise, bulleted list of facts about the user. Remove duplicates.\n\nExisting:\n${existingMemory}\n\nNew:\n${newMemory}`;
+            const combinedResult = await model.generateContent(combinedPrompt);
+            finalMemory = combinedResult.response.text();
+          }
+          
+          await supabaseAdmin.from('user_profiles').update({
+            dynamic_metadata: { ...(profile?.dynamic_metadata || {}), long_term_memory: finalMemory }
+          }).eq('id', userId);
+          
+          const idsToDelete = oldMsgs.map(m => m.id);
+          await supabaseAdmin.from('app_chat_messages').delete().in('id', idsToDelete);
+        } catch (err) {
+          console.error('LTM processing error:', err);
+        }
+      }
+    };
+    
+    // We don't await this to keep the chat response fast.
+    processLongTermMemory().catch(console.error);
 
     // 6. Fetch recent chat history
     let query = supabaseAdmin
