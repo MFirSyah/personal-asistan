@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     // 5. Fetch User Profile & selected personality
     let { data: profile } = await supabaseAdmin
       .from('user_profiles')
-      .select('fullname, selected_personality, assistant_name, user_nickname')
+      .select('fullname, selected_personality, assistant_name, user_nickname, dynamic_metadata')
       .eq('id', userId)
       .maybeSingle();
 
@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
         selected_personality: 'witty_sidekick',
         assistant_name: 'Sobat AI',
         user_nickname: 'Sobat',
+        dynamic_metadata: {},
       };
     }
 
