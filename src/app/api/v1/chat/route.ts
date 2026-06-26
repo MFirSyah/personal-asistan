@@ -5,6 +5,31 @@ import { scrubPII } from '@/lib/utils/scrubber';
 import { supabaseAdmin } from '@/lib/services/supabase';
 import { runStage1Extraction, runStage2Chat } from '@/lib/services/gemini';
 
+// Simple in-memory rate limiter (5 requests per minute per user)
+const rateLimitMap = new Map<string, number[]>();
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const windowMs = 60 * 1000; // 1 minute
+  const maxRequests = 5;
+
+  if (!rateLimitMap.has(userId)) {
+    rateLimitMap.set(userId, [now]);
+    return true;
+  }
+
+  const timestamps = rateLimitMap.get(userId)!;
+  const validTimestamps = timestamps.filter(ts => now - ts < windowMs);
+  
+  if (validTimestamps.length >= maxRequests) {
+    return false;
+  }
+
+  validTimestamps.push(now);
+  rateLimitMap.set(userId, validTimestamps);
+  return true;
+}
+
 export async function POST(req: NextRequest) {
   // 1. Authenticate Request (Gateway & JWT Verification)
   const authResult = await verifyGatewayAndUser(req);
@@ -13,6 +38,14 @@ export async function POST(req: NextRequest) {
   }
 
   const { userId } = authResult;
+
+  // Rate Limiting: Max 5 requests per minute
+  if (!checkRateLimit(userId)) {
+    return NextResponse.json(
+      { error: 'Terlalu banyak permintaan. Maksimal 5 pesan per menit.' },
+      { status: 429 }
+    );
+  }
 
   try {
     const body = await req.json();

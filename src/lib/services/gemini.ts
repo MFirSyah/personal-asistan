@@ -39,7 +39,7 @@ export async function runStage1Extraction(
 ): Promise<ExtractedData> {
   const genAI = getGenAI();
   const model = genAI.getGenerativeModel({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.5-flash',
     generationConfig: {
       temperature: 0.0,
       responseMimeType: 'application/json',
@@ -101,7 +101,7 @@ export async function runStage2Chat(params: {
 }): Promise<string[]> {
   const genAI = getGenAI();
   const model = genAI.getGenerativeModel({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.5-flash',
     generationConfig: {
       temperature: params.temperature,
       topP: params.topP,

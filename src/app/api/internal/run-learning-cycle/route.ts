@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   try {
     const genAI = getGenAI();
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       generationConfig: {
         temperature: 0.2,
         responseMimeType: 'application/json',
