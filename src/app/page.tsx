@@ -213,7 +213,24 @@ export default function Home() {
       });
 
       if (error) throw error;
-      // REDIRECT AND STATE CHECKS ARE HANDLED BY onAuthStateChange!
+      
+      if (!data.session) {
+        throw new Error('Email belum dikonfirmasi atau sesi gagal dibuat.');
+      }
+      
+      // Explicitly trigger the next step if onAuthStateChange is slow
+      // It will redirect or go to step 6 based on profile
+      const { data: uProfile } = await supabaseClient.from('user_profiles')
+        .select('fullname')
+        .eq('id', data.session.user.id)
+        .maybeSingle();
+        
+      if (uProfile) {
+        window.location.href = '/dashboard';
+      } else {
+        setStep(6);
+        setIsLoading(false);
+      }
     } catch (err: any) {
       console.error('Login error:', err);
       setAuthError(err.message || 'Gagal masuk. Periksa kembali email dan sandi Anda.');
