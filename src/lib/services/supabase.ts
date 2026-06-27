@@ -17,5 +17,10 @@ export const supabaseAdmin = createClient(
       persistSession: false,
       autoRefreshToken: false,
     },
+    global: {
+      headers: {
+        Connection: 'close',
+      },
+    },
   }
 );
