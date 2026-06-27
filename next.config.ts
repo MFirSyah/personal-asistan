@@ -3,9 +3,6 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  devIndicators: {
-    appIsrStatus: false,
-  },
   allowedDevOrigins: ['127.0.0.1', 'localhost', '192.168.1.11'],
 };
 
