@@ -75,14 +75,22 @@ Return the response STRICTLY in this JSON format:
 
 If any category has no entries, return an empty array for that key. Do not include any extra text outside the JSON.`;
 
-  try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    return JSON.parse(text) as ExtractedData;
-  } catch (error) {
-    console.error('Error in Stage 1 Extraction:', error);
-    return { transactions: [], tasks: [], moods: [], habits: [] };
+  let attempts = 3;
+  while (attempts > 0) {
+    try {
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      return JSON.parse(text) as ExtractedData;
+    } catch (error) {
+      console.error(`Error in Stage 1 Extraction (attempts left: ${attempts - 1}):`, error);
+      attempts--;
+      if (attempts === 0) {
+        return { transactions: [], tasks: [], moods: [], habits: [] };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
   }
+  return { transactions: [], tasks: [], moods: [], habits: [] };
 }
 
 /**
@@ -139,21 +147,29 @@ Example response style:
     })),
   });
 
-  try {
-    const result = await chatSession.sendMessage(params.userMessage);
-    const text = result.response.text();
-    
-    // Parse the [BREAK] separated strings into bubbles
-    const bubbles = text
-      .split('[BREAK]')
-      .map((b) => b.trim())
-      .filter(Boolean);
+  let attempts = 3;
+  while (attempts > 0) {
+    try {
+      const result = await chatSession.sendMessage(params.userMessage);
+      const text = result.response.text();
+      
+      // Parse the [BREAK] separated strings into bubbles
+      const bubbles = text
+        .split('[BREAK]')
+        .map((b) => b.trim())
+        .filter(Boolean);
 
-    return bubbles.length > 0 ? bubbles : [text];
-  } catch (error) {
-    console.error('Error in Stage 2 Chat:', error);
-    return ['Maaf, terjadi kesalahan koneksi dengan otak AI saya. Bisa tolong ulangi?'];
+      return bubbles.length > 0 ? bubbles : [text];
+    } catch (error) {
+      console.error(`Error in Stage 2 Chat (attempts left: ${attempts - 1}):`, error);
+      attempts--;
+      if (attempts === 0) {
+        return ['Maaf, terjadi kesalahan koneksi dengan otak AI saya. Bisa tolong ulangi?'];
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
   }
+  return ['Maaf, terjadi kesalahan koneksi dengan otak AI saya. Bisa tolong ulangi?'];
 }
 
 function sanitizeChatHistory(history: Array<{ role: 'user' | 'model'; parts: string }>) {
