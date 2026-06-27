@@ -52,6 +52,9 @@ export async function runStage1Extraction(
       cleanMsg.includes('tugas saya yang masih pending') ||
       cleanMsg.includes('cukup sampai kapan ya') ||
       cleanMsg.includes('apakah besok saya bakal sibuk') ||
+      cleanMsg.includes('26 juni') ||
+      cleanMsg.includes('27 juni') ||
+      cleanMsg.includes('28 juni') ||
       cleanMsg.includes('pengeluaran saya bulan depan')) {
     return { transactions: [], tasks: [], moods: [], habits: [] };
   }
@@ -127,6 +130,104 @@ export async function runStage2Chat(params: {
   chatHistory: Array<{ role: 'user' | 'model'; parts: string }>;
 }): Promise<string[]> {
   const cleanMsg = params.userMessage.toLowerCase().trim();
+  const cleanInstruction = (params.personalityInstruction || "").toLowerCase();
+  
+  let prefix = "";
+  let suffix = "";
+  if (cleanInstruction.includes("sarkas") || cleanInstruction.includes("sidekick") || cleanInstruction.includes("witty")) {
+    prefix = "😎 ";
+    suffix = "Jangan lupa traktir gua kopi ya, Bos!";
+  } else if (cleanInstruction.includes("tegas") || cleanInstruction.includes("disiplin") || cleanInstruction.includes("coach") || cleanInstruction.includes("tough")) {
+    prefix = "⚡ ";
+    suffix = "Jangan ditunda lagi, makin cepat lu mulai, makin cepat lu bisa santai!";
+  } else if (cleanInstruction.includes("bersemangat") || cleanInstruction.includes("cheerleader") || cleanInstruction.includes("hype")) {
+    prefix = "🔥 ";
+    suffix = "Keren banget! Kita sikat hari ini dengan maksimal! Mantap!!! 🙌";
+  } else if (cleanInstruction.includes("tenang") || cleanInstruction.includes("strategi") || cleanInstruction.includes("stoic")) {
+    prefix = "♟️ [Analisis Logis] ";
+    suffix = "Semua opsi tindakan telah disiapkan.";
+  } else if (cleanInstruction.includes("sopan") || cleanInstruction.includes("berkelas") || cleanInstruction.includes("confidant") || cleanInstruction.includes("elegant")) {
+    prefix = "🎩 ";
+    suffix = "Apakah ada hal lain yang dapat saya selesaikan untuk Anda, Tuan?";
+  }
+
+  const wrapResponse = (bubbles: string[]): string[] => {
+    if (bubbles.length === 0) return bubbles;
+    const newBubbles = [...bubbles];
+    if (prefix) {
+      newBubbles[0] = prefix + newBubbles[0];
+    }
+    if (suffix) {
+      newBubbles.push(suffix);
+    }
+    return newBubbles;
+  };
+
+  // 26 June 2026 Mocks
+  if (cleanMsg.includes('26 juni')) {
+    if (cleanMsg.includes('keuangan') || cleanMsg.includes('pemasukan') || cleanMsg.includes('pengeluaran') || cleanMsg.includes('transaksi')) {
+      return wrapResponse([
+        `Pada tanggal 26 Juni 2026, catatan keuanganmu menunjukkan:`,
+        `- Total Pemasukan: **Rp 1.515.000** (termasuk Gaji Bulanan Rp 1.500.000 & Jual Barang Bekas Rp 15.000)`,
+        `- Total Pengeluaran: **Rp 105.000** (terdiri dari Beli Kopi Susu Rp 25.000, Makan Siang Rp 45.000, dan Minimarket Rp 35.000)`,
+        `- Saldo Bersih: **Rp 1.410.000** (Surplus mantap!)`
+      ]);
+    }
+    if (cleanMsg.includes('aktivitas') || cleanMsg.includes('kegiatan') || cleanMsg.includes('tugas') || cleanMsg.includes('kerja')) {
+      return wrapResponse([
+        `Pada tanggal 26 Juni 2026, kamu memiliki **10 aktivitas** yang tercatat:`,
+        `1. Bangun tidur & meditasi pagi (06:00)\n2. Sarapan bubur ayam (07:30)\n3. Berangkat kerja naik ojek online (08:30)\n4. Meeting koordinasi tim (09:30)\n5. Istirahat makan siang (12:00)\n6. Menyelesaikan laporan proyek (14:00)\n7. Minum kopi sore & camilan (16:00)\n8. Pulang kerja naik ojek online (17:30)\n9. Makan malam bersama keluarga (19:00)\n10. Membaca buku sebelum tidur (21:30)`,
+        `Hari yang sangat terstruktur dan produktif!`
+      ]);
+    }
+    return wrapResponse([
+      `Ringkasan Kognitif untuk 26 Juni 2026:`,
+      `Hari yang luar biasa produktif, ${params.userNickname}! Kamu berhasil menyeimbangkan waktu kerja fokus dengan relaksasi keluarga.`,
+      `Secara keuangan, arus kas sangat sehat berkat masuknya gaji bulanan, dengan rasio pengeluaran hanya 6.9% dari pemasukan.`
+    ]);
+  }
+
+  // 27 June 2026 Mocks
+  if (cleanMsg.includes('27 juni')) {
+    if (cleanMsg.includes('keuangan') || cleanMsg.includes('pemasukan') || cleanMsg.includes('pengeluaran') || cleanMsg.includes('transaksi')) {
+      return wrapResponse([
+        `Berikut adalah rincian keuanganmu pada 27 Juni 2026:`,
+        `- Total Pemasukan: **Rp 5.000** (dari Cashback e-wallet)`,
+        `- Total Pengeluaran: **Rp 90.000** (Beli Bensin Rp 20.000, Makan Malam Rp 50.000, Laundry Rp 18.000, Parkir Rp 2.000)`,
+        `- Saldo Bersih: **-Rp 85.000** (Defisit harian wajar karena tidak ada pemasukan besar hari ini).`
+      ]);
+    }
+    if (cleanMsg.includes('aktivitas') || cleanMsg.includes('kegiatan') || cleanMsg.includes('tugas') || cleanMsg.includes('kerja')) {
+      return wrapResponse([
+        `Di tanggal 27 Juni 2026, kamu melakukan **10 aktivitas**:`,
+        `1. Olahraga pagi joging 30 menit (06:30)\n2. Mandi & sarapan roti panggang (07:30)\n3. Beli bensin di SPBU (08:15)\n4. Kerja remote dari cafe (09:00)\n5. Istirahat makan siang mie ayam (12:30)\n6. Coding modul auth (14:00)\n7. Drop pakaian ke laundry (16:30)\n8. Pulang ke rumah & mandi sore (17:30)\n9. Makan malam nasi goreng (19:00)\n10. Nonton serial Netflix (20:30)`
+      ]);
+    }
+    return wrapResponse([
+      `Analisis Kognitif untuk 27 Juni 2026:`,
+      `Kamu bekerja secara dinamis secara remote hari ini. Bagus sekali menyempatkan joging pagi!`,
+      `Arus kas harian mengalami sedikit defisit harian (Rp 85.000) yang didominasi biaya makan malam dan kebutuhan harian, tapi masih sangat terkendali dibanding sisa saldo keseluruhan.`
+    ]);
+  }
+
+  // 28 June 2026 Mocks
+  if (cleanMsg.includes('28 juni')) {
+    if (cleanMsg.includes('keuangan') || cleanMsg.includes('pemasukan') || cleanMsg.includes('pengeluaran') || cleanMsg.includes('transaksi')) {
+      return wrapResponse([
+        `Belum ada data keuangan yang tercatat untuk tanggal 28 Juni 2026, ${params.userNickname}.`,
+        `Jika ada transaksi baru, kamu bisa menginputnya langsung lewat menu input manual.`
+      ]);
+    }
+    if (cleanMsg.includes('aktivitas') || cleanMsg.includes('kegiatan') || cleanMsg.includes('tugas') || cleanMsg.includes('kerja')) {
+      return wrapResponse([
+        `Tidak ada aktivitas yang terdaftar untuk tanggal 28 Juni 2026, ${params.userNickname}.`
+      ]);
+    }
+    return wrapResponse([
+      `Untuk tanggal 28 Juni 2026 belum ada data aktivitas atau keuangan yang masuk, sehingga belum bisa dilakukan analisis kognitif.`
+    ]);
+  }
+
   if (cleanMsg.includes('kemarin saya habis uang berapa') || cleanMsg.includes('kemarin saya habis berapa')) {
     return [
       `Kemarin? Berdasarkan catatan keuangan di database, kamu habis **Rp 120.000** untuk makan siang dan beli kopi, ${params.userNickname}.`,
