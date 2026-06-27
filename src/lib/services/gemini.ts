@@ -100,13 +100,6 @@ export async function runStage2Chat(params: {
   chatHistory: Array<{ role: 'user' | 'model'; parts: string }>;
 }): Promise<string[]> {
   const genAI = getGenAI();
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      temperature: params.temperature,
-      topP: params.topP,
-    },
-  });
 
   const formattedPersonality = params.personalityInstruction
     .replace(/{assistant_name}/g, params.assistantName)
@@ -128,12 +121,22 @@ Do NOT use markdown lists for separate messages; use '[BREAK]' to let the system
 Example response style:
 "Halo Sobat! Laporan kerja lu udah kelar ya. [BREAK] Oh ya, kopi tadi Rp 25.000 udah gw masukin pengeluaran. Ada lagi?"`;
 
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: {
+      temperature: params.temperature,
+      topP: params.topP,
+    },
+    systemInstruction: systemInstruction,
+  });
+
+  const sanitizedHistory = sanitizeChatHistory(params.chatHistory);
+
   const chatSession = model.startChat({
-    history: params.chatHistory.map((item) => ({
+    history: sanitizedHistory.map((item) => ({
       role: item.role === 'user' ? 'user' : 'model',
       parts: [{ text: item.parts }],
     })),
-    systemInstruction: systemInstruction,
   });
 
   try {
@@ -152,3 +155,26 @@ Example response style:
     return ['Maaf, terjadi kesalahan koneksi dengan otak AI saya. Bisa tolong ulangi?'];
   }
 }
+
+function sanitizeChatHistory(history: Array<{ role: 'user' | 'model'; parts: string }>) {
+  const sanitized: Array<{ role: 'user' | 'model'; parts: string }> = [];
+  for (const msg of history) {
+    if (sanitized.length === 0) {
+      if (msg.role === 'user') {
+        sanitized.push({ ...msg });
+      }
+    } else {
+      const last = sanitized[sanitized.length - 1];
+      if (msg.role !== last.role) {
+        sanitized.push({ ...msg });
+      } else {
+        last.parts += `\n${msg.parts}`;
+      }
+    }
+  }
+  if (sanitized.length > 0 && sanitized[sanitized.length - 1].role === 'user') {
+    sanitized.pop();
+  }
+  return sanitized;
+}
+
