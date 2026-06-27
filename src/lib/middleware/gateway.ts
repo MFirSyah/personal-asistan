@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
+import { supabaseAdmin } from '../services/supabase';
 
 export interface AuthenticatedUser {
   userId: string;
@@ -43,34 +43,20 @@ export async function verifyGatewayAndUser(
   }
 
   const token = authHeader.split(' ')[1];
-  const jwtSecret = process.env.SUPABASE_JWT_SECRET;
-
-  if (!jwtSecret) {
-    console.error('SUPABASE_JWT_SECRET is not defined in environment variables.');
-    return NextResponse.json(
-      { error: 'Server configuration error' },
-      { status: 500 }
-    );
-  }
 
   try {
-    // Supabase JWT is signed with HS256 using the project's JWT Secret
-    const decoded = jwt.verify(token, jwtSecret) as {
-      sub: string;
-      email?: string;
-      role?: string;
-    };
-
-    if (!decoded.sub) {
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !user) {
+      console.error('Supabase token verification failed:', error);
       return NextResponse.json(
-        { error: 'Unauthorized: Invalid token claims' },
+        { error: 'Unauthorized: Token validation failed or expired' },
         { status: 401 }
       );
     }
 
     return {
-      userId: decoded.sub,
-      email: decoded.email,
+      userId: user.id,
+      email: user.email,
     };
   } catch (error) {
     console.error('JWT Verification failed:', error);
@@ -80,3 +66,4 @@ export async function verifyGatewayAndUser(
     );
   }
 }
+
