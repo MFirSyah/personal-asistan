@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyGatewayAndUser } from '@/lib/middleware/gateway';
 import { scrubPII } from '@/lib/utils/scrubber';
@@ -186,19 +186,24 @@ export async function POST(req: NextRequest) {
           const oldChatText = oldMsgs.map(m => `${m.sender_personality_id ? assistantName : userNickname}: ${m.message}`).join('\n');
           const memoryPrompt = `Extract key facts, user preferences, events, and important context from this chat history to build long-term memory for an AI assistant. Keep it concise in bullet points.\n\nChat:\n${oldChatText}`;
           
-          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-          const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
           
-          const result = await model.generateContent(memoryPrompt);
-          const newMemory = result.response.text();
+          const memResult = await ai.models.generateContent({
+            model: 'gemini-3.1-flash-lite',
+            contents: memoryPrompt,
+          });
+          const newMemory = memResult.text ?? '';
           
           const existingMemory = profile?.dynamic_metadata?.long_term_memory || '';
           let finalMemory = newMemory;
           
           if (existingMemory) {
             const combinedPrompt = `Merge these two memory contexts into a single, concise, bulleted list of facts about the user. Remove duplicates.\n\nExisting:\n${existingMemory}\n\nNew:\n${newMemory}`;
-            const combinedResult = await model.generateContent(combinedPrompt);
-            finalMemory = combinedResult.response.text();
+            const combinedResult = await ai.models.generateContent({
+              model: 'gemini-3.1-flash-lite',
+              contents: combinedPrompt,
+            });
+            finalMemory = combinedResult.text ?? '';
           }
           
           await supabaseAdmin.from('user_profiles').update({

@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyGatewayAndUser } from '@/lib/middleware/gateway';
 import { supabaseAdmin } from '@/lib/services/supabase';
@@ -8,7 +8,7 @@ const getGenAI = () => {
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not defined in environment variables.');
   }
-  return new GoogleGenerativeAI(apiKey);
+  return new GoogleGenAI({ apiKey });
 };
 
 export async function POST(req: NextRequest) {
@@ -62,14 +62,7 @@ export async function POST(req: NextRequest) {
       .join('\n');
 
     // 5. Generate Summary and Memory Update with Gemini
-    const genAI = getGenAI();
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-3.1-flash-lite',
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-      },
-    });
+    const ai = getGenAI();
 
     const prompt = `You are the Core Cognitive Engine. The user is clearing their chat history.
 Analyze the following conversation log between User (${profile.user_nickname}) and AI (${profile.assistant_name}) to extract reflections on:
@@ -97,8 +90,15 @@ Format the response strictly in JSON:
   "long_term_memory": "An updated summary of key facts, goals, and behavioral patterns about the user. Merge new learnings with the existing memory: '${existingMemory}'."
 }`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const result = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-lite',
+      contents: prompt,
+      config: {
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+      },
+    });
+    const text = result.text ?? '';
     const parsed = JSON.parse(text);
 
     // Format the summary for display in the mobile app dialog

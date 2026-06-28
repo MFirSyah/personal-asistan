@@ -1,13 +1,13 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import * as Sentry from '@sentry/nextjs';
 
-// Initialize the Gemini API client
+// Initialize the Gemini API client (new unified SDK)
 const getGenAI = () => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not defined in environment variables.');
   }
-  return new GoogleGenerativeAI(apiKey);
+  return new GoogleGenAI({ apiKey });
 };
 
 export interface ExtractedData {
@@ -38,15 +38,7 @@ export async function runStage1Extraction(
   userMessage: string,
   currentDateStr: string = new Date().toISOString()
 ): Promise<ExtractedData> {
-  // Use live Gemini extraction
-  const genAI = getGenAI();
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-3.1-flash-lite',
-    generationConfig: {
-      temperature: 0.0,
-      responseMimeType: 'application/json',
-    },
-  });
+  const ai = getGenAI();
 
   const prompt = `You are a structured data extractor. You must analyze the following user message and extract any relevant transactions (income or expense), tasks/to-dos, moods, or habits.
   
@@ -80,8 +72,15 @@ If any category has no entries, return an empty array for that key. Do not inclu
   let attempts = 3;
   while (attempts > 0) {
     try {
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
+      const result = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite',
+        contents: prompt,
+        config: {
+          temperature: 0.0,
+          responseMimeType: 'application/json',
+        },
+      });
+      const text = result.text ?? '';
       return JSON.parse(text) as ExtractedData;
     } catch (error) {
       console.error(`Error in Stage 1 Extraction (attempts left: ${attempts - 1}):`, error);
@@ -110,7 +109,6 @@ export async function runStage2Chat(params: {
   extractedData: ExtractedData;
   chatHistory: Array<{ role: 'user' | 'model'; parts: string }>;
 }): Promise<string[]> {
-  const cleanMsg = params.userMessage.toLowerCase().trim();
   const cleanInstruction = (params.personalityInstruction || "").toLowerCase();
   
   let prefix = "";
@@ -144,7 +142,7 @@ export async function runStage2Chat(params: {
     return newBubbles;
   };
 
-  const genAI = getGenAI();
+  const ai = getGenAI();
 
   const formattedPersonality = params.personalityInstruction
     .replace(/{assistant_name}/g, params.assistantName)
@@ -152,7 +150,6 @@ export async function runStage2Chat(params: {
 
   const extractionSummary = JSON.stringify(params.extractedData, null, 2);
 
-  // Construct standard history + current system instruction and user prompt
   const systemInstruction = `You are ${params.assistantName}, the AI personal assistant for ${params.userNickname}.
 Your character guidelines:
 ${formattedPersonality}
@@ -170,30 +167,29 @@ Do NOT use markdown lists for separate messages; use '[BREAK]' to let the system
 Example response style:
 "Halo Sobat! 😊 Laporan kerja lu udah kelar ya. [BREAK] Oh ya, kopi tadi Rp 25.000 udah gw masukin pengeluaran. Ada lagi? 👍"`;
 
-  const model = genAI.getGenerativeModel({
+  // Build history in the new SDK format
+  const sanitizedHistory = sanitizeChatHistory(params.chatHistory);
+  const historyContents = sanitizedHistory.map((item) => ({
+    role: item.role === 'user' ? 'user' as const : 'model' as const,
+    parts: [{ text: item.parts }],
+  }));
+
+  const chat = ai.chats.create({
     model: 'gemini-3.1-flash-lite',
-    generationConfig: {
+    config: {
       temperature: params.temperature,
       topP: params.topP,
+      systemInstruction: systemInstruction,
+      tools: [{ googleSearch: {} }],
     },
-    systemInstruction: systemInstruction,
-    tools: [{ googleSearchRetrieval: {} }],
-  });
-
-  const sanitizedHistory = sanitizeChatHistory(params.chatHistory);
-
-  const chatSession = model.startChat({
-    history: sanitizedHistory.map((item) => ({
-      role: item.role === 'user' ? 'user' : 'model',
-      parts: [{ text: item.parts }],
-    })),
+    history: historyContents,
   });
 
   let attempts = 3;
   while (attempts > 0) {
     try {
-      const result = await chatSession.sendMessage(params.userMessage);
-      const text = result.response.text();
+      const result = await chat.sendMessage({ message: params.userMessage });
+      const text = result.text ?? '';
       
       // Parse the [BREAK] separated strings into bubbles
       const bubbles = text
@@ -236,4 +232,3 @@ function sanitizeChatHistory(history: Array<{ role: 'user' | 'model'; parts: str
   }
   return sanitized;
 }
-

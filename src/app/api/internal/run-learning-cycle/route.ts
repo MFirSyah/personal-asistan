@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/services/supabase';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 // Initialize Gemini client helper
 const getGenAI = () => {
@@ -8,7 +8,7 @@ const getGenAI = () => {
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not defined in environment variables.');
   }
-  return new GoogleGenerativeAI(apiKey);
+  return new GoogleGenAI({ apiKey });
 };
 
 export async function POST(req: NextRequest) {
@@ -19,14 +19,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const genAI = getGenAI();
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-3.1-flash-lite',
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-      },
-    });
+    const ai = getGenAI();
 
     // 2. Fetch all users in the system to run the batch process
     const { data: users, error: usersError } = await supabaseAdmin
@@ -113,8 +106,15 @@ Format response strictly in JSON:
 Do not include any extra text.`;
 
       try {
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
+        const result = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: prompt,
+          config: {
+            temperature: 0.2,
+            responseMimeType: 'application/json',
+          },
+        });
+        const text = result.text ?? '';
         const parsed = JSON.parse(text);
 
         // 3. Save Memory back to User Profile (Merge, not overwrite)
