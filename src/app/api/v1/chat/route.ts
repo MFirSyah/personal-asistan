@@ -30,6 +30,16 @@ function checkRateLimit(userId: string): boolean {
   return true;
 }
 
+function shouldRunExtraction(message: string): boolean {
+  const clean = message.toLowerCase();
+  const keywords = [
+    'catat', 'beli', 'tugas', 'tambah', 'pemasukan', 'pengeluaran', 'mood', 'capek', 'habis',
+    'bayar', 'transfer', 'uang', 'rupiah', 'rp', 'gaji', 'belanja', 'makan', 'minum', 'selesai',
+    'agenda', 'jadwal', 'todo', 'to-do', 'kelar', 'ziarah', 'kubur'
+  ];
+  return keywords.some(kw => clean.includes(kw));
+}
+
 export async function POST(req: NextRequest) {
   // 1. Authenticate Request (Gateway & JWT Verification)
   const authResult = await verifyGatewayAndUser(req);
@@ -177,7 +187,7 @@ export async function POST(req: NextRequest) {
           const memoryPrompt = `Extract key facts, user preferences, events, and important context from this chat history to build long-term memory for an AI assistant. Keep it concise in bullet points.\n\nChat:\n${oldChatText}`;
           
           const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-          const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+          const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
           
           const result = await model.generateContent(memoryPrompt);
           const newMemory = result.response.text();
@@ -228,7 +238,9 @@ export async function POST(req: NextRequest) {
       }));
 
     // 7. Stage 1 Extraction
-    const extractedData = await runStage1Extraction(scrubbedMessage);
+    const extractedData = shouldRunExtraction(scrubbedMessage)
+      ? await runStage1Extraction(scrubbedMessage)
+      : { transactions: [], tasks: [], moods: [], habits: [] };
 
     // Process Stage 1 results: insert transactions
     if (extractedData.transactions && extractedData.transactions.length > 0) {

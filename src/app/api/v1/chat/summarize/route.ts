@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     // 5. Generate Summary and Memory Update with Gemini
     const genAI = getGenAI();
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-flash-lite',
       generationConfig: {
         temperature: 0.2,
         responseMimeType: 'application/json',

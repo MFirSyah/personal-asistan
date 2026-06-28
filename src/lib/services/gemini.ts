@@ -41,7 +41,7 @@ export async function runStage1Extraction(
   // Use live Gemini extraction
   const genAI = getGenAI();
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.1-flash-lite',
     generationConfig: {
       temperature: 0.0,
       responseMimeType: 'application/json',
@@ -171,7 +171,7 @@ Example response style:
 "Halo Sobat! 😊 Laporan kerja lu udah kelar ya. [BREAK] Oh ya, kopi tadi Rp 25.000 udah gw masukin pengeluaran. Ada lagi? 👍"`;
 
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.1-flash-lite',
     generationConfig: {
       temperature: params.temperature,
       topP: params.topP,
