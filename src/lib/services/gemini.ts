@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import * as Sentry from '@sentry/nextjs';
 
 // Initialize the Gemini API client
 const getGenAI = () => {
@@ -86,6 +87,7 @@ If any category has no entries, return an empty array for that key. Do not inclu
       console.error(`Error in Stage 1 Extraction (attempts left: ${attempts - 1}):`, error);
       attempts--;
       if (attempts === 0) {
+        Sentry.captureException(error);
         return { transactions: [], tasks: [], moods: [], habits: [] };
       }
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -155,6 +157,10 @@ export async function runStage2Chat(params: {
 Your character guidelines:
 ${formattedPersonality}
 
+Always include relevant and friendly emojis/emoticons (e.g. 😊, 😂, 😎, 👍, 🔥, etc.) in your responses to make the interaction feel lively, warm, and natural.
+
+You have access to Google Search grounding to retrieve real-time information, news, and up-to-date facts. When the user asks about current events, news, or details that require real-time information, always use Google Search to get the latest update.
+
 We have already parsed the user's message and extracted this structured data (which will be processed automatically in our backend):
 ${extractionSummary}
 
@@ -162,7 +168,7 @@ Reply to the user's current message in Indonesian, fully in character.
 If you have multiple distinct points to make or want to reply in stages, separate them with the tag '[BREAK]' (literally the string '[BREAK]').
 Do NOT use markdown lists for separate messages; use '[BREAK]' to let the system split them into separate chat bubbles.
 Example response style:
-"Halo Sobat! Laporan kerja lu udah kelar ya. [BREAK] Oh ya, kopi tadi Rp 25.000 udah gw masukin pengeluaran. Ada lagi?"`;
+"Halo Sobat! 😊 Laporan kerja lu udah kelar ya. [BREAK] Oh ya, kopi tadi Rp 25.000 udah gw masukin pengeluaran. Ada lagi? 👍"`;
 
   const model = genAI.getGenerativeModel({
     model: 'gemini-2.5-flash',
@@ -171,6 +177,7 @@ Example response style:
       topP: params.topP,
     },
     systemInstruction: systemInstruction,
+    tools: [{ googleSearchRetrieval: {} }],
   });
 
   const sanitizedHistory = sanitizeChatHistory(params.chatHistory);
@@ -199,6 +206,7 @@ Example response style:
       console.error(`Error in Stage 2 Chat (attempts left: ${attempts - 1}):`, error);
       attempts--;
       if (attempts === 0) {
+        Sentry.captureException(error);
         return wrapResponse(['Maaf, terjadi kesalahan koneksi dengan otak AI saya. Bisa tolong ulangi?']);
       }
       await new Promise((resolve) => setTimeout(resolve, 2000));
