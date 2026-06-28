@@ -156,8 +156,6 @@ ${formattedPersonality}
 
 Always include relevant and friendly emojis/emoticons (e.g. 😊, 😂, 😎, 👍, 🔥, etc.) in your responses to make the interaction feel lively, warm, and natural.
 
-You have access to Google Search grounding to retrieve real-time information, news, and up-to-date facts. When the user asks about current events, news, or details that require real-time information, always use Google Search to get the latest update.
-
 We have already parsed the user's message and extracted this structured data (which will be processed automatically in our backend):
 ${extractionSummary}
 
@@ -180,7 +178,6 @@ Example response style:
       temperature: params.temperature,
       topP: params.topP,
       systemInstruction: systemInstruction,
-      tools: [{ googleSearch: {} }],
     },
     history: historyContents,
   });
