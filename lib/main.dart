@@ -557,8 +557,18 @@ class _DashboardNavigatorScreenState extends State<DashboardNavigatorScreen> {
     try {
       final session = Supabase.instance.client.auth.currentSession;
       if (session == null) return;
+
+      // Get user timezone
+      final userTimezone = DateTime.now().timeZoneName;
+      final timezoneMap = {
+        'WIB': 'Asia/Jakarta',
+        'WITA': 'Asia/Makassar',
+        'WIT': 'Asia/Jayapura',
+      };
+      final mappedTimezone = timezoneMap[userTimezone] ?? 'Asia/Jakarta';
+
       final response = await http.get(
-        Uri.parse('${AppConfig.activeUrl}/api/v1/briefing'),
+        Uri.parse('${AppConfig.activeUrl}/api/v1/briefing?timezone=${Uri.encodeComponent(mappedTimezone)}'),
         headers: {
           'x-jarvis-gateway-key': AppConfig.gatewayKey,
           'Authorization': 'Bearer ${session.accessToken}',
@@ -949,9 +959,19 @@ class _NativeChatScreenState extends State<NativeChatScreen> {
     await _dbHelper.insertChatMessage(userMsg);
 
     try {
-      // Call Next.js Server Chat API
+      // Call Next.js Server Chat API with user timezone
       final session = Supabase.instance.client.auth.currentSession;
       print("JWT ACCESS TOKEN: ${session?.accessToken}");
+
+      // Get user timezone
+      final userTimezone = DateTime.now().timeZoneName;
+      final timezoneMap = {
+        'WIB': 'Asia/Jakarta',
+        'WITA': 'Asia/Makassar',
+        'WIT': 'Asia/Jayapura',
+      };
+      final mappedTimezone = timezoneMap[userTimezone] ?? 'Asia/Jakarta';
+
       final response = await http.post(
         Uri.parse('${AppConfig.activeUrl}/api/v1/chat'),
         headers: {
@@ -963,6 +983,7 @@ class _NativeChatScreenState extends State<NativeChatScreen> {
           'message': text,
           'room_id': null,
           'language': _preferredLanguage,
+          'timezone': mappedTimezone,
         }),
       );
 
@@ -1031,6 +1052,300 @@ class _NativeChatScreenState extends State<NativeChatScreen> {
     }
   }
 
+  void _showSearchDialog() {
+    final searchController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Row(
+          children: [
+            Icon(Icons.search, color: Color(0xFF3B82F6)),
+            SizedBox(width: 8),
+            Text('Cari Data', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: searchController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Ketik kata kunci...',
+                  hintStyle: const TextStyle(color: Colors.grey),
+                  filled: true,
+                  fillColor: const Color(0xFF0F172A),
+                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                onSubmitted: (value) {
+                  if (value.length >= 2) {
+                    Navigator.pop(ctx);
+                    _performSearch(value);
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Minimal 2 karakter',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (searchController.text.length >= 2) {
+                Navigator.pop(ctx);
+                _performSearch(searchController.text);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF3B82F6),
+            ),
+            child: const Text('Cari'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _performSearch(String query) async {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      final response = await http.get(
+        Uri.parse('${AppConfig.activeUrl}/api/v1/search?q=${Uri.encodeComponent(query)}'),
+        headers: {
+          'x-jarvis-gateway-key': AppConfig.gatewayKey,
+          'Authorization': 'Bearer ${session?.accessToken ?? ""}',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        _showSearchResults(query, data);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Gagal mencari data'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Search error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Koneksi bermasalah saat mencari'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showSearchResults(String query, Map<String, dynamic> data) {
+    final results = data['results'] as Map<String, dynamic>;
+    final transactions = results['transactions'] as List? ?? [];
+    final tasks = results['tasks'] as List? ?? [];
+    final chat = results['chat'] as List? ?? [];
+    final total = data['total'] as int? ?? 0;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F172A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Icon(Icons.search, color: Color(0xFF3B82F6)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Hasil pencarian: "$query"',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '$total hasil',
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: total == 0
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.search_off, size: 64, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text(
+                            'Tidak ada hasil',
+                            style: TextStyle(color: Colors.grey, fontSize: 16),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        // Transactions
+                        if (transactions.isNotEmpty) ...[
+                          _buildSearchSection('💰 Transaksi', transactions, Icons.attach_money),
+                          const SizedBox(height: 16),
+                        ],
+                        // Tasks
+                        if (tasks.isNotEmpty) ...[
+                          _buildSearchSection('✅ Tugas', tasks, Icons.task_alt),
+                          const SizedBox(height: 16),
+                        ],
+                        // Chat
+                        if (chat.isNotEmpty) ...[
+                          _buildSearchSection('💬 Percakapan', chat, Icons.chat_bubble_outline),
+                        ],
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchSection(String title, List items, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: const Color(0xFF3B82F6), size: 20),
+            const SizedBox(width: 8),
+            Text(
+              '$title (${items.length})',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...items.map((item) => _buildSearchItem(item)).toList(),
+      ],
+    );
+  }
+
+  Widget _buildSearchItem(Map<String, dynamic> item) {
+    final category = item['category'] as String? ?? '';
+    String title = '';
+    String subtitle = '';
+    IconData icon = Icons.article;
+
+    if (category == 'transaction') {
+      final type = item['type'] as String? ?? 'expense';
+      final amount = item['amount'] ?? 0;
+      title = item['description'] ?? 'Transaksi';
+      subtitle = '${type == 'income' ? '+' : '-'} Rp ${NumberFormat('#,###').format(amount)}';
+      icon = type == 'income' ? Icons.arrow_downward : Icons.arrow_upward;
+    } else if (category == 'task') {
+      title = item['task_name'] ?? 'Tugas';
+      subtitle = item['status'] ?? 'pending';
+      icon = Icons.task_alt;
+    } else if (category == 'chat') {
+      title = item['message'] ?? 'Pesan';
+      subtitle = item['sender'] == 'user' ? 'Anda' : 'AI';
+      icon = Icons.chat_bubble;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF3B82F6).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: const Color(0xFF3B82F6), size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title.length > 60 ? '${title.substring(0, 60)}...' : title,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1064,6 +1379,11 @@ class _NativeChatScreenState extends State<NativeChatScreen> {
         backgroundColor: const Color(0xFF0F172A),
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.search_rounded),
+            tooltip: 'Cari',
+            onPressed: () => _showSearchDialog(),
+          ),
           IconButton(
             icon: const Icon(Icons.delete_sweep_rounded),
             tooltip: 'Hapus Cache Percakapan',
