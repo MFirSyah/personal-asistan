@@ -183,16 +183,46 @@ export async function runStage2Chat(params: {
     'Asia/Jakarta': 'WIB'
   }[userTz] || 'WIB';
 
+  // Helper to get timezone offset description
+  const getTimezoneInfo = (tz: string) => {
+    const info: Record<string, { name: string; offset: string; cities: string }> = {
+      'Asia/Jayapura': { name: 'WIT', offset: 'UTC+9', cities: 'Papua, Ambon, Maluku' },
+      'Asia/Makassar': { name: 'WITA', offset: 'UTC+8', cities: 'Makassar, Bali, NTT, NTB, Kalimantan' },
+      'Asia/Jakarta': { name: 'WIB', offset: 'UTC+7', cities: 'Jakarta, Jawa, Sumatera, Kalimantan' },
+    };
+    return info[tz] || info['Asia/Jakarta'];
+  };
+
+  const tzInfo = getTimezoneInfo(userTz);
+
   const systemInstruction = `You are ${params.assistantName}, the AI personal assistant for ${params.userNickname}.
 Your character guidelines:
 ${formattedPersonality}
 
-IMPORTANT - Current Date/Time Information (User's local time):
-- Today is: ${dateInfo.date}
-- Current time: ${dateInfo.time} ${tzDisplayName}
-- ALWAYS use this date information when answering questions about dates, schedules, deadlines, or any time-related queries.
-- If asked "hari ini tanggal berapa" or similar questions about dates, respond with the EXACT date above: ${dateInfo.date}.
-- When processing tasks with due dates, calculate relative to THIS date: ${dateInfo.date}.
+CRITICAL - TIMEZONE & SCHEDULING RULES (READ CAREFULLY):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Your user is currently in timezone: ${tzInfo.name} (${tzInfo.offset})
+- Timezone cities: ${tzInfo.cities}
+- Current time: ${dateInfo.time} ${tzInfo.name} on ${dateInfo.date}
+
+TIME CONVERSION RULES:
+• WIB (UTC+7) = West Indonesia - Jakarta, Jawa, Sumatera
+• WITA (UTC+8) = Central Indonesia - Bali, Makassar, Kalimantan
+• WIT (UTC+9) = East Indonesia - Papua, Ambon
+
+When user mentions time (e.g., "jam 7 malam", "pukul 3 siang"):
+1. ALWAYS use the user's CURRENT timezone (${tzInfo.name}) as the default
+2. If user mentions a DIFFERENT LOCATION (e.g., "acara di jakarta tapi aku di papua"):
+   - Convert TO user's current timezone (${tzInfo.name})
+   - Example: "rapat di jakarta jam 2 siang" for user in WIT = "rapat jam 4 sore WIT"
+3. ALWAYS confirm the time: "Oke, aku catat rapat jam 7 malam WIT (${dateInfo.time}) ya?"
+4. If the time mentioned is AMBIGUOUS or the location doesn't match, ASK for clarification:
+   - "Jam 7 malam itu WIB atau WIT? Supaya aku bisa set reminder yang tepat 😊"
+
+DATE CALCULATION:
+- "besok" = ${dateInfo.date} + 1 day
+- "minggu depan" = 7 days from today
+- Always calculate relative to ${dateInfo.date} in ${tzInfo.name}
 
 Always include relevant and friendly emojis/emoticons (e.g. 😊, 😂, 😎, 👍, 🔥, etc.) in your responses to make the interaction feel lively, warm, and natural.
 

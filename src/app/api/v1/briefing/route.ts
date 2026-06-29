@@ -93,17 +93,26 @@ export async function GET(req: NextRequest) {
       : 'Tidak ada tugas aktif.';
 
     const txSummary = transactions && transactions.length > 0
-      ? transactions.map(t => `- ${t.type === 'income' ? '+' : '-'} Rp ${t.amount.toLocaleString()} (${t.description})`).join('\n')
+      ? transactions.map(t => `${t.type === 'income' ? '+' : '-'} Rp ${Number(t.amount).toLocaleString('id-ID')} (${t.description})`).join('\n')
       : 'Tidak ada transaksi terbaru.';
+
+    // Get timezone info
+    const timezone = req.nextUrl.searchParams.get('timezone') || 'Asia/Jakarta';
+    const tzInfo = {
+      'Asia/Jayapura': { name: 'WIT', offset: 'UTC+9' },
+      'Asia/Makassar': { name: 'WITA', offset: 'UTC+8' },
+      'Asia/Jakarta': { name: 'WIB', offset: 'UTC+7' },
+    }[timezone] || { name: 'WIB', offset: 'UTC+7' };
 
     const result = await ai.models.generateContent({
       model: 'gemini-3.1-flash-lite',
       contents: `You are ${assistantName}, an AI personal assistant for ${userNickname}.
 Your personality: ${personalityHint}
 
-IMPORTANT - Current Date/Time (WIB/Indonesia):
-- Today is: ${now.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-- Current time: ${now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' })} WIB
+IMPORTANT - Current Date/Time (User's local timezone):
+- Today is: ${now.toLocaleDateString('id-ID', { timeZone: timezone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+- Current time: ${now.toLocaleTimeString('id-ID', { timeZone: timezone, hour: '2-digit', minute: '2-digit' })} ${tzInfo.name}
+- User is in timezone: ${tzInfo.name} (${tzInfo.offset})
 
 Generate a concise MORNING BRIEFING in Indonesian for ${userNickname}.
 Keep it warm, personal, and actionable. Use emojis appropriately.
