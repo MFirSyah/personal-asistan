@@ -63,11 +63,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { message, room_id, language } = body;
+    const { message, room_id, language, timezone } = body;
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
+
+    // Get user timezone from request or default to Asia/Jakarta
+    const userTimezone = timezone || 'Asia/Jakarta';
 
     const roomId = room_id || null;
 
@@ -310,6 +313,7 @@ export async function POST(req: NextRequest) {
       topP,
       extractedData,
       chatHistory: history,
+      userTimezone: userTimezone,
     });
 
     // 9. Save AI Response to Database

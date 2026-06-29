@@ -10,6 +10,27 @@ const getGenAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// Helper function to format date with user's timezone
+export function formatDateForUser(timezone: string = 'Asia/Jakarta') {
+  const now = new Date();
+  return {
+    date: now.toLocaleDateString('id-ID', {
+      timeZone: timezone,
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    }),
+    time: now.toLocaleTimeString('id-ID', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit'
+    }),
+    timezone: timezone,
+    isoString: now.toISOString()
+  };
+}
+
 export interface ExtractedData {
   transactions: Array<{
     amount: number;
@@ -108,7 +129,12 @@ export async function runStage2Chat(params: {
   topP: number;
   extractedData: ExtractedData;
   chatHistory: Array<{ role: 'user' | 'model'; parts: string }>;
+  userTimezone?: string; // Optional timezone from user device
 }): Promise<string[]> {
+  // Use user's timezone or default to Asia/Jakarta (WIB)
+  const userTz = params.userTimezone || 'Asia/Jakarta';
+  const dateInfo = formatDateForUser(userTz);
+
   const cleanInstruction = (params.personalityInstruction || "").toLowerCase();
   
   let prefix = "";
@@ -150,30 +176,23 @@ export async function runStage2Chat(params: {
 
   const extractionSummary = JSON.stringify(params.extractedData, null, 2);
 
-  // Get current date for AI context (WIB timezone)
-  const now = new Date();
-  const currentDate = now.toLocaleDateString('id-ID', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-  const currentTime = now.toLocaleTimeString('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Asia/Jakarta'
-  }) + ' WIB';
+  // Get timezone display name
+  const tzDisplayName = {
+    'Asia/Jayapura': 'WIT',
+    'Asia/Makassar': 'WITA',
+    'Asia/Jakarta': 'WIB'
+  }[userTz] || 'WIB';
 
   const systemInstruction = `You are ${params.assistantName}, the AI personal assistant for ${params.userNickname}.
 Your character guidelines:
 ${formattedPersonality}
 
-IMPORTANT - Current Date/Time Information:
-- Today is: ${currentDate}
-- Current time: ${currentTime}
+IMPORTANT - Current Date/Time Information (User's local time):
+- Today is: ${dateInfo.date}
+- Current time: ${dateInfo.time} ${tzDisplayName}
 - ALWAYS use this date information when answering questions about dates, schedules, deadlines, or any time-related queries.
-- If asked "hari ini tanggal berapa" or similar questions about dates, respond with the EXACT date above: ${currentDate}.
-- When processing tasks with due dates, calculate relative to THIS date: ${currentDate}.
+- If asked "hari ini tanggal berapa" or similar questions about dates, respond with the EXACT date above: ${dateInfo.date}.
+- When processing tasks with due dates, calculate relative to THIS date: ${dateInfo.date}.
 
 Always include relevant and friendly emojis/emoticons (e.g. 😊, 😂, 😎, 👍, 🔥, etc.) in your responses to make the interaction feel lively, warm, and natural.
 
