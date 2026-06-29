@@ -100,19 +100,28 @@ export async function GET(req: NextRequest) {
       model: 'gemini-3.1-flash-lite',
       contents: `You are ${assistantName}, an AI personal assistant for ${userNickname}.
 Your personality: ${personalityHint}
-Current date: ${now.toISOString()}
+
+IMPORTANT - Current Date/Time (WIB/Indonesia):
+- Today is: ${now.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+- Current time: ${now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' })} WIB
 
 Generate a concise MORNING BRIEFING in Indonesian for ${userNickname}.
 Keep it warm, personal, and actionable. Use emojis appropriately.
 
-Structure the briefing like this:
-1. A warm good morning greeting (1 line)
-2. Today's task overview (mention pending tasks if any)
-3. Quick financial snapshot (recent spending/income if any)
-4. A motivational closing (1 line)
+IMPORTANT RULES:
+- Use plain text ONLY, no markdown formatting
+- Use numbers (1., 2., 3., 4.) for lists, NOT bullet points (* or -)
+- Keep paragraphs short and easy to read
+- Do NOT use bold (**text**) or italic (*text*) markers
+
+Structure the briefing like this (use plain text):
+1. A warm good morning greeting
+2. Today's task overview
+3. Quick financial snapshot
+4. A motivational closing
 
 Data context:
-PENDING TASKS:
+TASKS TODAY:
 ${tasksSummary}
 
 RECENT TRANSACTIONS (last 3 days):

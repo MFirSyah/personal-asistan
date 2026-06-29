@@ -101,7 +101,7 @@ export async function GET(req: NextRequest) {
       model: 'gemini-3.1-flash-lite',
       contents: `You are ${assistantName}, an AI personal assistant for ${userNickname}.
 Your personality: ${personalityHint}
-Current time: ${timeOfDay} (${now.toISOString()})
+Current time in Indonesia (WIB): ${timeOfDay}, ${now.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} ${now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' })} WIB
 
 Generate a SHORT friendly greeting in Indonesian (1-2 sentences max) to welcome the user back after being away for a while.
 Include an appropriate emoji. Be warm, concise, and in character.
