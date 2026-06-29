@@ -192,16 +192,18 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         );
       }
     } catch (e) {
+      // Professional error wrapping - map backend errors to user-friendly messages
+      String friendlyMessage = _getFriendlyErrorMessage(e);
       setState(() {
-        _errorMsg = e.toString().replaceAll('Exception:', '').trim();
+        _errorMsg = friendlyMessage;
       });
-      // Filter out user auth/validation errors from Sentry reports
+      // Only send non-user errors to Sentry
       bool isUserAuthError = false;
       if (e is AuthException) {
         final msg = e.message.toLowerCase();
-        if (msg.contains('credential') || 
-            msg.contains('confirm') || 
-            msg.contains('already registered') || 
+        if (msg.contains('credential') ||
+            msg.contains('confirm') ||
+            msg.contains('already registered') ||
             msg.contains('not found')) {
           isUserAuthError = true;
         }
@@ -216,6 +218,83 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         });
       }
     }
+  }
+
+  /// Maps backend errors to user-friendly professional messages
+  String _getFriendlyErrorMessage(dynamic error) {
+    final errorStr = error.toString().toLowerCase();
+
+    // Auth errors
+    if (errorStr.contains('invalid login credentials') ||
+        errorStr.contains('invalid credentials') ||
+        errorStr.contains('wrong password') ||
+        errorStr.contains('password')) {
+      return '🔐 Email atau kata sandi yang Anda masukkan salah. Silakan coba lagi.';
+    }
+
+    if (errorStr.contains('email not found') ||
+        errorStr.contains('user not found') ||
+        errorStr.contains('not found')) {
+      return '📧 Akun dengan email ini belum terdaftar. Silakan daftar terlebih dahulu.';
+    }
+
+    if (errorStr.contains('already registered') ||
+        errorStr.contains('already exists')) {
+      return '📝 Akun dengan email ini sudah terdaftar. Silakan login atau gunakan email lain.';
+    }
+
+    if (errorStr.contains('email not confirmed') ||
+        errorStr.contains('confirm') ||
+        errorStr.contains('verification')) {
+      return '✅ Email Anda belum diverifikasi. Silakan cek inbox atau folder spam untuk email verifikasi.';
+    }
+
+    if (errorStr.contains('weak password') ||
+        errorStr.contains('password too short') ||
+        errorStr.contains('invalid format')) {
+      return '🔒 Kata sandi terlalu lemah. Minimal 6 karakter dengan kombinasi huruf dan angka.';
+    }
+
+    if (errorStr.contains('rate limit') ||
+        errorStr.contains('too many request')) {
+      return '⏳ Terlalu banyak percobaan. Silakan tunggu beberapa saat sebelum mencoba lagi.';
+    }
+
+    if (errorStr.contains('network') ||
+        errorStr.contains('connection') ||
+        errorStr.contains('timeout') ||
+        errorStr.contains('socket')) {
+      return '🌐 Koneksi internet bermasalah. Silakan periksa jaringan Anda dan coba lagi.';
+    }
+
+    // API errors
+    if (errorStr.contains('429')) {
+      return '⏳ Server sedang sibuk. Silakan tunggu sebentar dan coba lagi.';
+    }
+
+    if (errorStr.contains('500') ||
+        errorStr.contains('internal server')) {
+      return '🔧 Server sedang maintenance. Silakan coba lagi dalam beberapa menit.';
+    }
+
+    if (errorStr.contains('401') ||
+        errorStr.contains('unauthorized')) {
+      return '🔑 Sesi Anda telah berakhir. Silakan logout dan login kembali.';
+    }
+
+    if (errorStr.contains('403') ||
+        errorStr.contains('forbidden')) {
+      return '🚫 Akses ditolak. Silakan hubungi tim support jika masalah berlanjut.';
+    }
+
+    // Database/storage errors
+    if (errorStr.contains('duplicate') ||
+        errorStr.contains('unique constraint')) {
+      return '📋 Data sudah ada sebelumnya. Silakan refresh halaman dan coba lagi.';
+    }
+
+    // Default fallback - generic professional message
+    return '⚠️ Terjadi kesalahan yang tidak terduga. Silakan coba lagi atau hubungi support.';
   }
 
   @override
@@ -935,14 +1014,14 @@ class _NativeChatScreenState extends State<NativeChatScreen> {
         _isTyping = false;
       });
       Sentry.captureException(e);
-      
-      // Fallback response for offline / error
+
+      // Fallback response for offline / error - professional message
       final fallbackMsg = {
         'id': const Uuid().v4(),
         'room_id': null,
         'sender_id': null,
         'sender_personality_id': 'error',
-        'message': 'Gagal terhubung ke Asisten Pusat.\n\nDetail error: ${e.toString().replaceAll("Exception:", "").trim()}\n\nMode offline sedang aktif atau jaringan lambat. Data transaksi & tugas tetap dicatat lokal dan akan disinkronkan otomatis saat online.',
+        'message': '🔄 Koneksi ke server terputus.\n\nPesan Anda tetap tersimpan secara lokal dan akan dikirim otomatis saat koneksi pulih.\n\n💡 Tips: Pastikan koneksi internet stabil untuk pengalaman terbaik.',
         'created_at': DateTime.now().toIso8601String(),
       };
       setState(() {
@@ -1068,7 +1147,18 @@ class _NativeChatScreenState extends State<NativeChatScreen> {
                     Navigator.pop(progressDialogContext!);
                   }
                   print("Error during summarization: $e");
-                  
+                  Sentry.captureException(e);
+
+                  // Show professional error message
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('🔄 Ringkasan tidak dapat diproses saat ini. Pesan lokal tetap dihapus.'),
+                        backgroundColor: Color(0xFF10B981),
+                      ),
+                    );
+                  }
+
                   // Clear local cache anyway as fallback
                   await _dbHelper.clearChatCache(null);
                   if (mounted) {
