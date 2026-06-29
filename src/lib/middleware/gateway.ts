@@ -6,6 +6,15 @@ export interface AuthenticatedUser {
   email?: string;
 }
 
+// Security headers for all responses
+export const securityHeaders = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'X-XSS-Protection': '1; mode=block',
+  'X-RateLimit-Limit': '100',
+  'X-RateLimit-Window': '1 minute',
+};
+
 /**
  * Verifies the incoming request for gateway security and Supabase JWT authenticity.
  * @param req NextRequest
@@ -22,14 +31,14 @@ export async function verifyGatewayAndUser(
     console.error('GATEWAY_KEY is not defined in environment variables.');
     return NextResponse.json(
       { error: 'Server configuration error' },
-      { status: 500 }
+      { status: 500, headers: securityHeaders }
     );
   }
 
   if (gatewayKey !== expectedGatewayKey) {
     return NextResponse.json(
       { error: 'Unauthorized: Invalid gateway key' },
-      { status: 401 }
+      { status: 401, headers: securityHeaders }
     );
   }
 
@@ -38,7 +47,7 @@ export async function verifyGatewayAndUser(
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return NextResponse.json(
       { error: 'Unauthorized: Missing or invalid Authorization header' },
-      { status: 401 }
+      { status: 401, headers: securityHeaders }
     );
   }
 
@@ -50,7 +59,7 @@ export async function verifyGatewayAndUser(
       console.error('Supabase token verification failed:', error);
       return NextResponse.json(
         { error: 'Unauthorized: Token validation failed or expired' },
-        { status: 401 }
+        { status: 401, headers: securityHeaders }
       );
     }
 
@@ -62,7 +71,7 @@ export async function verifyGatewayAndUser(
     console.error('JWT Verification failed:', error);
     return NextResponse.json(
       { error: 'Unauthorized: Token validation failed or expired' },
-      { status: 401 }
+      { status: 401, headers: securityHeaders }
     );
   }
 }

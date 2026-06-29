@@ -6,16 +6,44 @@ import { supabaseAdmin } from '@/lib/services/supabase';
 import { runStage1Extraction, runStage2Chat } from '@/lib/services/gemini';
 
 // Simple in-memory rate limiter (5 requests per minute per user)
+// With automatic cleanup to prevent memory leak
 const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_ENTRIES = 10000;
+let lastCleanup = Date.now();
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // Cleanup every 5 minutes
 
 // In-memory cache for LTM processing timestamps (userId -> lastProcessedAt)
 const ltmProcessCache = new Map<string, number>();
 const LTM_PROCESS_INTERVAL_MS = 60 * 60 * 1000; // 1 hour minimum between LTM processing per user
 
+function cleanupOldEntries() {
+  const now = Date.now();
+  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
+
+  let cleaned = 0;
+  for (const [userId, timestamps] of rateLimitMap.entries()) {
+    const validTimestamps = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+    if (validTimestamps.length === 0) {
+      rateLimitMap.delete(userId);
+      cleaned++;
+    } else {
+      rateLimitMap.set(userId, validTimestamps);
+    }
+  }
+  lastCleanup = now;
+  if (cleaned > 0) {
+    console.log(`Rate limiter cleanup: removed ${cleaned} stale entries. Active entries: ${rateLimitMap.size}`);
+  }
+}
+
 function checkRateLimit(userId: string): boolean {
   const now = Date.now();
-  const windowMs = 60 * 1000; // 1 minute
-  const maxRequests = 5;
+
+  // Periodic cleanup
+  if (rateLimitMap.size > RATE_LIMIT_MAX_ENTRIES || now - lastCleanup > CLEANUP_INTERVAL_MS) {
+    cleanupOldEntries();
+  }
 
   if (!rateLimitMap.has(userId)) {
     rateLimitMap.set(userId, [now]);
@@ -23,9 +51,9 @@ function checkRateLimit(userId: string): boolean {
   }
 
   const timestamps = rateLimitMap.get(userId)!;
-  const validTimestamps = timestamps.filter(ts => now - ts < windowMs);
-  
-  if (validTimestamps.length >= maxRequests) {
+  const validTimestamps = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+
+  if (validTimestamps.length >= 5) {
     return false;
   }
 

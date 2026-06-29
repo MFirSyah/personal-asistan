@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyGatewayAndUser } from '@/lib/middleware/gateway';
 import { supabaseAdmin } from '@/lib/services/supabase';
 
+// Security headers
+const securityHeaders = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'X-XSS-Protection': '1; mode=block',
+};
+
 export async function GET(req: NextRequest) {
   const authResult = await verifyGatewayAndUser(req);
   if (authResult instanceof NextResponse) {
@@ -12,12 +19,27 @@ export async function GET(req: NextRequest) {
   try {
     // Get search query from URL params
     const { searchParams } = new URL(req.url);
-    const query = searchParams.get('q')?.trim();
+    let query = searchParams.get('q')?.trim() || '';
 
     if (!query || query.length < 2) {
       return NextResponse.json(
         { error: 'Query minimal 2 karakter' },
-        { status: 400 }
+        { status: 400, headers: securityHeaders }
+      );
+    }
+
+    // SECURITY: Sanitize query to prevent SQL/pattern injection
+    // Remove wildcard characters that could match all records
+    query = query
+      .replace(/[%_]/g, ' ')  // Remove SQL wildcards
+      .replace(/[<>'"\\;]/g, '')  // Remove potential XSS/Injection chars
+      .trim()
+      .substring(0, 100);  // Limit query length
+
+    if (query.length < 2) {
+      return NextResponse.json(
+        { error: 'Query tidak valid setelah sanitasi' },
+        { status: 400, headers: securityHeaders }
       );
     }
 
