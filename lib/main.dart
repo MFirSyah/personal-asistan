@@ -143,25 +143,21 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
     try {
       final supabase = Supabase.instance.client;
       if (_isRegister) {
-        // Sign Up with profile auto-creation
-        // NOTE: For testing without email verification, we auto-confirm
-        final res = await supabase.auth.signUp(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-          data: {
-            'fullname': _fullnameController.text.trim(),
-            'user_nickname': _fullnameController.text.trim().split(' ')[0],
-          },
-        );
+        // ========== REGISTER MODE ==========
+        try {
+          final res = await supabase.auth.signUp(
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+            data: {
+              'fullname': _fullnameController.text.trim(),
+              'user_nickname': _fullnameController.text.trim().split(' ')[0],
+            },
+          );
 
-        // Debug: Log the response
-        print("SignUp response: user=${res.user?.id}, session=${res.session != null}");
-        print("User confirmed: ${res.user?.emailConfirmedAt}");
+          print("SignUp response: user=${res.user?.id}, session=${res.session != null}");
 
-        if (res.user != null) {
-          // Check if email confirmation is required
-          if (res.session != null) {
-            // No email confirmation needed - direct login
+          if (res.user != null && res.session != null) {
+            // Registration successful with session - direct login
             try {
               await supabase.from('user_profiles').upsert({
                 'id': res.user!.id,
@@ -173,23 +169,61 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
             } catch (e) {
               print("Profile creation skipped: $e");
             }
-          } else {
-            // Email confirmation required
-            // For Supabase free tier, try direct signIn immediately
-            // or show message
+          } else if (res.user != null && res.session == null) {
+            // Registration successful but needs email confirmation
             setState(() {
               _isRegister = false;
-              _errorMsg = 'Pendaftaran berhasil! Cek email untuk verifikasi, atau coba login sekarang.';
+              _errorMsg = '✅ Pendaftaran berhasil! Cek email untuk verifikasi akun, lalu login.';
             });
             return;
           }
+        } on AuthException catch (e) {
+          final msg = e.message.toLowerCase();
+          if (msg.contains('already registered') || msg.contains('already exists')) {
+            throw Exception('📝 Email ini sudah terdaftar. Silakan login atau gunakan email lain.');
+          } else if (msg.contains('weak password') || msg.contains('password')) {
+            throw Exception('🔒 Password terlalu lemah. Minimal 6 karakter.');
+          } else {
+            throw Exception('📝 Gagal mendaftar: ${e.message}');
+          }
         }
       } else {
-        // Sign In
-        await supabase.auth.signInWithPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-        );
+        // ========== LOGIN MODE ==========
+        try {
+          final authResponse = await supabase.auth.signInWithPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+          );
+
+          print("Login response: user=${authResponse.user?.id}, confirmed=${authResponse.user?.emailConfirmedAt}");
+
+          // Check if login successful
+          if (authResponse.user == null) {
+            throw Exception('Login gagal. Silakan coba lagi.');
+          }
+
+          // If user needs email confirmation (old account)
+          if (authResponse.user!.emailConfirmedAt == null) {
+            setState(() {
+              _errorMsg = '📧 Email belum diverifikasi. Cek inbox atau folder spam untuk link verifikasi.';
+            });
+            return;
+          }
+        } on AuthException catch (e) {
+          // Specific Supabase auth errors
+          final msg = e.message.toLowerCase();
+          if (msg.contains('invalid login credentials') ||
+              msg.contains('invalid credentials')) {
+            throw Exception('🔐 Email atau password salah. Silakan coba lagi.');
+          } else if (msg.contains('user not found') ||
+              msg.contains('email not found')) {
+            throw Exception('📧 Akun dengan email ini belum terdaftar. Silakan daftar terlebih dahulu.');
+          } else if (msg.contains('email not confirmed')) {
+            throw Exception('📧 Email belum diverifikasi. Cek inbox atau folder spam.');
+          } else {
+            throw Exception('🔐 Terjadi kesalahan login: ${e.message}');
+          }
+        }
       }
     } catch (e) {
       // Professional error wrapping - map backend errors to user-friendly messages
