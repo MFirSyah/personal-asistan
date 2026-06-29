@@ -150,9 +150,30 @@ export async function runStage2Chat(params: {
 
   const extractionSummary = JSON.stringify(params.extractedData, null, 2);
 
+  // Get current date for AI context (WIB timezone)
+  const now = new Date();
+  const currentDate = now.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+  const currentTime = now.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Jakarta'
+  }) + ' WIB';
+
   const systemInstruction = `You are ${params.assistantName}, the AI personal assistant for ${params.userNickname}.
 Your character guidelines:
 ${formattedPersonality}
+
+IMPORTANT - Current Date/Time Information:
+- Today is: ${currentDate}
+- Current time: ${currentTime}
+- ALWAYS use this date information when answering questions about dates, schedules, deadlines, or any time-related queries.
+- If asked "hari ini tanggal berapa" or similar questions about dates, respond with the EXACT date above: ${currentDate}.
+- When processing tasks with due dates, calculate relative to THIS date: ${currentDate}.
 
 Always include relevant and friendly emojis/emoticons (e.g. 😊, 😂, 😎, 👍, 🔥, etc.) in your responses to make the interaction feel lively, warm, and natural.
 

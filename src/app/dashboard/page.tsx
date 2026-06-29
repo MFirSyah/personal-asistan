@@ -51,6 +51,8 @@ export default function DashboardPage() {
   const [activeView, setActiveView] = useState<'analysis' | 'data'>('analysis');
   const [futurePlans, setFuturePlans] = useState<any[]>([]);
   const [plannedInsightIds, setPlannedInsightIds] = useState<string[]>([]);
+  const [morningBriefing, setMorningBriefing] = useState<string | null>(null);
+  const [briefingDismissed, setBriefingDismissed] = useState(false);
 
   // Profile Settings Modal & Edit States
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -369,6 +371,23 @@ export default function DashboardPage() {
         setIsAuthenticated(true);
         try {
           await fetchDashboardData(client, session.user);
+          // Fetch morning briefing
+          try {
+            const bRes = await fetch('/api/v1/briefing', {
+              headers: {
+                'x-jarvis-gateway-key': 'jarvis-super-secret-key-2026',
+                'Authorization': `Bearer ${session.access_token}`,
+              },
+            });
+            if (bRes.ok) {
+              const bData = await bRes.json();
+              if (bData.show_briefing && bData.briefing_text) {
+                setMorningBriefing(bData.briefing_text);
+              }
+            }
+          } catch (bErr) {
+            console.warn('Morning briefing fetch failed:', bErr);
+          }
         } catch (err: any) {
           console.error('Failed to load dashboard data:', err);
           setErrorMsg(err.message || 'Gagal memuat data dashboard');
@@ -1255,6 +1274,47 @@ export default function DashboardPage() {
           </button>
         </div>
       </header>
+
+      {/* Morning Briefing Banner */}
+      {morningBriefing && !briefingDismissed && (
+        <div style={{
+          margin: '0 20px 16px',
+          padding: '20px 24px',
+          background: 'linear-gradient(135deg, rgba(59,130,246,0.15) 0%, rgba(139,92,246,0.1) 100%)',
+          borderRadius: '16px',
+          border: '1px solid rgba(59,130,246,0.25)',
+          position: 'relative',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+            <span style={{ fontSize: '1.5rem' }}>☀️</span>
+            <span style={{ fontWeight: 700, fontSize: '1rem', color: '#FBBF24', fontFamily: 'var(--font-title)' }}>Morning Briefing</span>
+            <button
+              type="button"
+              onClick={() => setBriefingDismissed(true)}
+              style={{
+                marginLeft: 'auto',
+                background: 'rgba(255,255,255,0.1)',
+                border: 'none',
+                color: '#94A3B8',
+                fontSize: '1.1rem',
+                cursor: 'pointer',
+                borderRadius: '50%',
+                width: '28px',
+                height: '28px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Tutup briefing"
+            >
+              ×
+            </button>
+          </div>
+          <p style={{ color: '#CBD5E1', fontSize: '0.9rem', lineHeight: '1.7', whiteSpace: 'pre-wrap', margin: 0 }}>
+            {morningBriefing}
+          </p>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="dashboard-content">

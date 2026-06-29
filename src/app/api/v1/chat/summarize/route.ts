@@ -104,38 +104,36 @@ Format the response strictly in JSON:
     // Format the summary for display in the mobile app dialog
     const formattedSummary = `👤 PREFERENSI ANDA:\n${(parsed.user_preferences || []).map((p: string) => `- ${p}`).join('\n') || '- (Tidak terdeteksi preferensi baru)'}\n\n🤖 EVALUASI & KOREKSI AI:\n${(parsed.ai_mistakes || []).map((m: string) => `- ${m}`).join('\n') || '- (Tidak terdeteksi keluhan/kesalahan AI)'}`;
 
-    // 6. Save Memory back to User Profile
+    // 6. Prepare updated metadata
     const updatedMetadata = {
       ...metadata,
       long_term_memory: parsed.long_term_memory || existingMemory,
     };
 
-    await supabaseAdmin
-      .from('user_profiles')
-      .update({ dynamic_metadata: updatedMetadata })
-      .eq('id', userId);
-
-    // 7. Delete Chat Messages from Supabase to start fresh
-    const { error: deleteError } = await supabaseAdmin
-      .from('app_chat_messages')
-      .delete()
-      .eq('user_id', userId);
-
-    if (deleteError) {
-      console.error('Failed to clear chat messages from Supabase:', deleteError);
-    }
-
-    // 8. Cache the generated summary in ai_insights_cache for dashboard visibility
-    await supabaseAdmin.from('ai_insights_cache').upsert(
-      {
-        user_id: userId,
-        insight_type: 'chat_summary_insight',
-        cached_reply: formattedSummary,
-        sources_metadata: { processed_at: new Date().toISOString(), message_count: messages.length },
-        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
-      },
-      { onConflict: 'user_id,insight_type' }
-    );
+    // 7. Parallel write: Update profile, delete messages, and upsert cache
+    await Promise.all([
+      // Save Memory back to User Profile
+      supabaseAdmin
+        .from('user_profiles')
+        .update({ dynamic_metadata: updatedMetadata })
+        .eq('id', userId),
+      // Delete Chat Messages from Supabase to start fresh
+      supabaseAdmin
+        .from('app_chat_messages')
+        .delete()
+        .eq('user_id', userId),
+      // Cache the generated summary in ai_insights_cache for dashboard visibility
+      supabaseAdmin.from('ai_insights_cache').upsert(
+        {
+          user_id: userId,
+          insight_type: 'chat_summary_insight',
+          cached_reply: formattedSummary,
+          sources_metadata: { processed_at: new Date().toISOString(), message_count: messages.length },
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+        },
+        { onConflict: 'user_id,insight_type' }
+      )
+    ]);
 
     return NextResponse.json({
       success: true,

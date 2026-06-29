@@ -8,6 +8,10 @@ import { runStage1Extraction, runStage2Chat } from '@/lib/services/gemini';
 // Simple in-memory rate limiter (5 requests per minute per user)
 const rateLimitMap = new Map<string, number[]>();
 
+// In-memory cache for LTM processing timestamps (userId -> lastProcessedAt)
+const ltmProcessCache = new Map<string, number>();
+const LTM_PROCESS_INTERVAL_MS = 60 * 60 * 1000; // 1 hour minimum between LTM processing per user
+
 function checkRateLimit(userId: string): boolean {
   const now = Date.now();
   const windowMs = 60 * 1000; // 1 minute
@@ -106,12 +110,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Fetch User Profile & selected personality
-    let { data: profile } = await supabaseAdmin
-      .from('user_profiles')
-      .select('fullname, selected_personality, assistant_name, user_nickname, dynamic_metadata')
-      .eq('id', userId)
-      .maybeSingle();
+    // 5. Parallel fetch: User Profile & selected personality
+    const [profileResult] = await Promise.all([
+      supabaseAdmin
+        .from('user_profiles')
+        .select('fullname, selected_personality, assistant_name, user_nickname, dynamic_metadata')
+        .eq('id', userId)
+        .maybeSingle()
+    ]);
+
+    let profile = profileResult.data;
 
     if (!profile) {
       // Create a default profile if it doesn't exist yet
@@ -143,7 +151,7 @@ export async function POST(req: NextRequest) {
     const assistantName = profile?.assistant_name || 'Sobat AI';
     const userNickname = profile?.user_nickname || 'Sobat';
 
-    // Get personality template
+    // Get personality template (after we know personalityId)
     const { data: personality } = await supabaseAdmin
       .from('ai_personalities')
       .select('system_instruction_template, temperature, top_p')
@@ -169,8 +177,18 @@ export async function POST(req: NextRequest) {
     const temperature = Number(personality?.temperature ?? 0.3);
     const topP = Number(personality?.top_p ?? 0.95);
 
-    // 5.5. Long Term Memory Processing Pipeline (Async)
+    // 5.5. Long Term Memory Processing Pipeline (BATCHED - runs max once per hour per user)
     const processLongTermMemory = async () => {
+      // Check if we should skip LTM processing (too soon since last run)
+      const now = Date.now();
+      const lastProcessed = ltmProcessCache.get(userId) || 0;
+
+      if (now - lastProcessed < LTM_PROCESS_INTERVAL_MS) {
+        console.log(`[LTM] Skipping - processed recently for user ${userId.substring(0, 8)}`);
+        return;
+      }
+
+      // Check if there are old messages to process (messages older than 7 days)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const { data: oldMsgs } = await supabaseAdmin
@@ -180,41 +198,54 @@ export async function POST(req: NextRequest) {
         .is('room_id', null)
         .lt('created_at', sevenDaysAgo.toISOString())
         .limit(50);
-        
-      if (oldMsgs && oldMsgs.length > 0) {
-        try {
-          const oldChatText = oldMsgs.map(m => `${m.sender_personality_id ? assistantName : userNickname}: ${m.message}`).join('\n');
-          const memoryPrompt = `Extract key facts, user preferences, events, and important context from this chat history to build long-term memory for an AI assistant. Keep it concise in bullet points.\n\nChat:\n${oldChatText}`;
-          
-          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-          
-          const memResult = await ai.models.generateContent({
+
+      if (!oldMsgs || oldMsgs.length === 0) {
+        console.log(`[LTM] No old messages to process for user ${userId.substring(0, 8)}`);
+        return;
+      }
+
+      // Update cache timestamp BEFORE processing to prevent concurrent runs
+      ltmProcessCache.set(userId, now);
+
+      try {
+        console.log(`[LTM] Processing ${oldMsgs.length} old messages for user ${userId.substring(0, 8)}`);
+        const oldChatText = oldMsgs.map(m => `${m.sender_personality_id ? assistantName : userNickname}: ${m.message}`).join('\n');
+        const memoryPrompt = `Extract key facts, user preferences, events, and important context from this chat history to build long-term memory for an AI assistant. Keep it concise in bullet points.\n\nChat:\n${oldChatText}`;
+
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
+        const memResult = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: memoryPrompt,
+        });
+        const newMemory = memResult.text ?? '';
+
+        const existingMemory = profile?.dynamic_metadata?.long_term_memory || '';
+        let finalMemory = newMemory;
+
+        // Only do merge if there's existing memory (saves 1 API call)
+        if (existingMemory && existingMemory.length > 10) {
+          const combinedPrompt = `Merge these two memory contexts into a single, concise, bulleted list of facts about the user. Remove duplicates.\n\nExisting:\n${existingMemory}\n\nNew:\n${newMemory}`;
+          const combinedResult = await ai.models.generateContent({
             model: 'gemini-3.1-flash-lite',
-            contents: memoryPrompt,
+            contents: combinedPrompt,
           });
-          const newMemory = memResult.text ?? '';
-          
-          const existingMemory = profile?.dynamic_metadata?.long_term_memory || '';
-          let finalMemory = newMemory;
-          
-          if (existingMemory) {
-            const combinedPrompt = `Merge these two memory contexts into a single, concise, bulleted list of facts about the user. Remove duplicates.\n\nExisting:\n${existingMemory}\n\nNew:\n${newMemory}`;
-            const combinedResult = await ai.models.generateContent({
-              model: 'gemini-3.1-flash-lite',
-              contents: combinedPrompt,
-            });
-            finalMemory = combinedResult.text ?? '';
-          }
-          
-          await supabaseAdmin.from('user_profiles').update({
-            dynamic_metadata: { ...(profile?.dynamic_metadata || {}), long_term_memory: finalMemory }
-          }).eq('id', userId);
-          
-          const idsToDelete = oldMsgs.map(m => m.id);
-          await supabaseAdmin.from('app_chat_messages').delete().in('id', idsToDelete);
-        } catch (err) {
-          console.error('LTM processing error:', err);
+          finalMemory = combinedResult.text ?? '';
         }
+
+        // Batch update: profile + delete messages in parallel
+        await Promise.all([
+          supabaseAdmin.from('user_profiles').update({
+            dynamic_metadata: { ...(profile?.dynamic_metadata || {}), long_term_memory: finalMemory }
+          }).eq('id', userId),
+          supabaseAdmin.from('app_chat_messages').delete().in('id', oldMsgs.map(m => m.id))
+        ]);
+
+        console.log(`[LTM] Completed for user ${userId.substring(0, 8)}`);
+      } catch (err) {
+        console.error('[LTM] Processing error:', err);
+        // Reset cache on error so it can retry next time
+        ltmProcessCache.delete(userId);
       }
     };
     
