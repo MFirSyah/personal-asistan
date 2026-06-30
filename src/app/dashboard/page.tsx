@@ -1257,9 +1257,11 @@ export default function DashboardPage() {
             'Witty'
           })</p>
         </div>
-        <div 
-          className="user-badge" 
-          style={{ cursor: 'pointer', transition: 'var(--transition-smooth)' }} 
+        {/* User badge - Hidden for mobile app */}
+        {false && (
+        <div
+          className="user-badge"
+          style={{ cursor: 'pointer', transition: 'var(--transition-smooth)' }}
           onClick={() => {
             setShowProfileModal(true);
             setSubmitSuccessMsg('');
@@ -1269,10 +1271,10 @@ export default function DashboardPage() {
         >
           <div className="avatar-dot"></div>
           <span style={{ fontSize: '0.9rem', fontWeight: 500, marginRight: '4px' }}>{profile.fullname}</span>
-          <button 
-            type="button" 
-            className="btn btn-secondary" 
-            style={{ padding: '4px 8px', fontSize: '0.75rem' }} 
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ padding: '4px 8px', fontSize: '0.75rem' }}
             onClick={(e) => {
               e.stopPropagation();
               handleLogout();
@@ -1281,6 +1283,7 @@ export default function DashboardPage() {
             Keluar
           </button>
         </div>
+        )}
       </header>
       )}
 
