@@ -60,6 +60,11 @@ dependencies:
   intl: ^0.19.0
   flutter_markdown: ^0.7.3
 
+  # Layer 14: Push Notifications with Firebase Cloud Messaging (FCM)
+  firebase_core: ^3.8.1
+  firebase_messaging: ^15.2.1
+  flutter_local_notifications: ^18.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

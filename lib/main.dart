@@ -11,13 +11,32 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'config.dart';
 import 'local_db.dart';
 import 'sync_service.dart';
+import 'notification_service.dart';
+
+// Background message handler for FCM
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  print('FCM Background: ${message.messageId}');
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase
+  try {
+    await Firebase.initializeApp();
+    // Set background message handler
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    print('Firebase initialized successfully');
+  } catch (e) {
+    print('Firebase initialization failed (expected if not configured): $e');
+  }
 
   // Initialize Supabase client
   await Supabase.initialize(
@@ -27,6 +46,14 @@ Future<void> main() async {
 
   // Initialize offline synchronization background listener
   SyncService.instance.initialize();
+
+  // Initialize notification service
+  try {
+    await NotificationService().initialize();
+    print('NotificationService initialized');
+  } catch (e) {
+    print('NotificationService initialization failed (expected if not configured): $e');
+  }
 
   // Initialize Sentry SDK for Layer 12 error tracking
   await SentryFlutter.init(
@@ -76,29 +103,66 @@ class AuthWrapper extends StatefulWidget {
 class _AuthWrapperState extends State<AuthWrapper> {
   bool _isLoading = true;
   User? _user;
+  bool _needsProfileSetup = false;
 
   @override
   void initState() {
     super.initState();
-    _checkAuth();
+    _checkAuthAndProfile();
     // Listen for auth state changes
-    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
       if (mounted) {
-        setState(() {
-          _user = data.session?.user;
-          _isLoading = false;
-        });
+        final newUser = data.session?.user;
+        if (newUser != null) {
+          // Cek apakah user sudah punya profile
+          final hasProfile = await _checkUserHasProfile(newUser.id);
+          setState(() {
+            _user = newUser;
+            _needsProfileSetup = !hasProfile;
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _user = null;
+            _needsProfileSetup = false;
+            _isLoading = false;
+          });
+        }
       }
     });
   }
 
-  Future<void> _checkAuth() async {
+  Future<bool> _checkUserHasProfile(String userId) async {
+    try {
+      final res = await Supabase.instance.client
+          .from('user_profiles')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+      return res != null;
+    } catch (e) {
+      print("Error checking profile: $e");
+      return false;
+    }
+  }
+
+  Future<void> _checkAuthAndProfile() async {
     final session = Supabase.instance.client.auth.currentSession;
     if (mounted) {
-      setState(() {
-        _user = session?.user;
-        _isLoading = false;
-      });
+      if (session?.user != null) {
+        final hasProfile = await _checkUserHasProfile(session!.user.id);
+        setState(() {
+          _user = session.user;
+          _needsProfileSetup = !hasProfile;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _user = null;
+          _needsProfileSetup = false;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -111,6 +175,12 @@ class _AuthWrapperState extends State<AuthWrapper> {
         ),
       );
     }
+
+    if (_user != null && _needsProfileSetup) {
+      // User login tapi belum punya profile - tampilkan form setup
+      return const ProfileSetupScreen();
+    }
+
     return _user != null ? const DashboardNavigatorScreen() : const LoginRegisterScreen();
   }
 }
@@ -124,17 +194,34 @@ class LoginRegisterScreen extends StatefulWidget {
 }
 
 class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
-  final _formKey = GlobalKey<FormState>();
+  final _formKeyLogin = GlobalKey<FormState>();
+  final _formKeyProfile = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _fullnameController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   bool _isRegister = false;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   String _errorMsg = '';
 
+  // State untuk form 2 (profile setup)
+  bool _showProfileSetup = false;
+  String? _pendingUserId;
+  String? _pendingEmail;
+  final _usernameController = TextEditingController();
+  String _selectedEgo = 'witty_sidekick';
+
+  final List<Map<String, dynamic>> _egoOptions = [
+    {'id': 'witty_sidekick', 'name': 'Sobat AI', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
+    {'id': 'wise_mentor', 'name': 'Guru Bijak', 'desc': 'Bijak & Inspiratif', 'icon': Icons.school},
+    {'id': 'efficient_executive', 'name': 'Eksekutif', 'desc': 'Tegas & Produktif', 'icon': Icons.work},
+    {'id': 'creative_companion', 'name': 'Sahabat Kreatif', 'desc': 'Kreatif & Supportif', 'icon': Icons.lightbulb},
+    {'id': 'calm_balancer', 'name': 'Penyeimbang', 'desc': 'Tenang & Empati', 'icon': Icons.spa},
+  ];
+
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKeyLogin.currentState!.validate()) return;
     setState(() {
       _isLoading = true;
       _errorMsg = '';
@@ -148,39 +235,35 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
           final res = await supabase.auth.signUp(
             email: _emailController.text.trim(),
             password: _passwordController.text,
-            data: {
-              'fullname': _fullnameController.text.trim(),
-              'user_nickname': _fullnameController.text.trim().split(' ')[0],
-            },
           );
 
           print("SignUp response: user=${res.user?.id}, session=${res.session != null}");
 
-          if (res.user != null && res.session != null) {
-            // Registration successful with session - direct login
-            try {
-              await supabase.from('user_profiles').upsert({
-                'id': res.user!.id,
-                'fullname': _fullnameController.text.trim(),
-                'selected_personality': 'witty_sidekick',
-                'assistant_name': 'Sobat AI',
-                'user_nickname': _fullnameController.text.trim().split(' ')[0],
+          if (res.user != null) {
+            // Simpan userId dan email untuk form setup profile
+            _pendingUserId = res.user!.id;
+            _pendingEmail = _emailController.text.trim();
+
+            if (res.session != null) {
+              // Langsung login (Confirm Email OFF)
+              // Tampilkan form setup profile
+              setState(() {
+                _showProfileSetup = true;
+                _isLoading = false;
               });
-            } catch (e) {
-              print("Profile creation skipped: $e");
+              return;
+            } else {
+              // Perlu email confirmation
+              setState(() {
+                _errorMsg = '✅ Pendaftaran berhasil! Cek email untuk verifikasi akun.';
+              });
+              return;
             }
-          } else if (res.user != null && res.session == null) {
-            // Registration successful but needs email confirmation
-            setState(() {
-              _isRegister = false;
-              _errorMsg = '✅ Pendaftaran berhasil! Cek email untuk verifikasi akun, lalu login.';
-            });
-            return;
           }
         } on AuthException catch (e) {
           final msg = e.message.toLowerCase();
           if (msg.contains('already registered') || msg.contains('already exists')) {
-            throw Exception('📝 Email ini sudah terdaftar. Silakan login atau gunakan email lain.');
+            throw Exception('📝 Email ini sudah terdaftar.');
           } else if (msg.contains('weak password') || msg.contains('password')) {
             throw Exception('🔒 Password terlalu lemah. Minimal 6 karakter.');
           } else {
@@ -195,56 +278,33 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
             password: _passwordController.text,
           );
 
-          print("Login response: user=${authResponse.user?.id}, confirmed=${authResponse.user?.emailConfirmedAt}");
+          print("Login response: user=${authResponse.user?.id}, confirmed=${authResponse.user?.emailConfirmedAt}, session=${authResponse.session != null}");
 
-          // Check if login successful
-          if (authResponse.user == null) {
-            throw Exception('Login gagal. Silakan coba lagi.');
-          }
-
-          // If user needs email confirmation (old account)
-          if (authResponse.user!.emailConfirmedAt == null) {
-            setState(() {
-              _errorMsg = '📧 Email belum diverifikasi. Cek inbox atau folder spam untuk link verifikasi.';
-            });
+          if (authResponse.user != null) {
+            print("Login successful for user: ${authResponse.user!.email}");
             return;
           }
+
+          throw Exception('Login gagal. Silakan coba lagi.');
         } on AuthException catch (e) {
-          // Specific Supabase auth errors
           final msg = e.message.toLowerCase();
-          if (msg.contains('invalid login credentials') ||
-              msg.contains('invalid credentials')) {
-            throw Exception('🔐 Email atau password salah. Silakan coba lagi.');
-          } else if (msg.contains('user not found') ||
-              msg.contains('email not found')) {
-            throw Exception('📧 Akun dengan email ini belum terdaftar. Silakan daftar terlebih dahulu.');
+          print("AuthException during login: ${e.message}");
+          if (msg.contains('invalid login credentials') || msg.contains('invalid credentials')) {
+            throw Exception('🔐 Email atau password salah.');
+          } else if (msg.contains('user not found') || msg.contains('email not found')) {
+            throw Exception('📧 Akun belum terdaftar.');
           } else if (msg.contains('email not confirmed')) {
-            throw Exception('📧 Email belum diverifikasi. Cek inbox atau folder spam.');
+            throw Exception('📧 Email belum diverifikasi.');
           } else {
-            throw Exception('🔐 Terjadi kesalahan login: ${e.message}');
+            throw Exception('🔐 Terjadi kesalahan: ${e.message}');
           }
         }
       }
     } catch (e) {
-      // Professional error wrapping - map backend errors to user-friendly messages
       String friendlyMessage = _getFriendlyErrorMessage(e);
       setState(() {
         _errorMsg = friendlyMessage;
       });
-      // Only send non-user errors to Sentry
-      bool isUserAuthError = false;
-      if (e is AuthException) {
-        final msg = e.message.toLowerCase();
-        if (msg.contains('credential') ||
-            msg.contains('confirm') ||
-            msg.contains('already registered') ||
-            msg.contains('not found')) {
-          isUserAuthError = true;
-        }
-      }
-      if (!isUserAuthError) {
-        Sentry.captureException(e);
-      }
     } finally {
       if (mounted) {
         setState(() {
@@ -252,6 +312,79 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         });
       }
     }
+  }
+
+  Future<void> _submitProfileSetup() async {
+    if (!_formKeyProfile.currentState!.validate()) return;
+    if (_pendingUserId == null) {
+      setState(() {
+        _errorMsg = '⚠️ Sesi habis. Silakan daftar ulang.';
+        _showProfileSetup = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMsg = '';
+    });
+
+    try {
+      final supabase = Supabase.instance.client;
+
+      // Update user metadata
+      await supabase.auth.updateUser(UserAttributes(
+        data: {
+          'user_nickname': _usernameController.text.trim().split(' ')[0],
+        },
+      ));
+
+      // Create user profile
+      final selectedEgoData = _egoOptions.firstWhere((e) => e['id'] == _selectedEgo);
+
+      await supabase.from('user_profiles').upsert({
+        'id': _pendingUserId,
+        'fullname': _usernameController.text.trim(),
+        'user_nickname': _usernameController.text.trim().split(' ')[0],
+        'selected_personality': _selectedEgo,
+        'assistant_name': selectedEgoData['name'],
+      });
+
+      print("Profile setup successful for user: $_pendingEmail");
+
+      // Reset state
+      _pendingUserId = null;
+      _pendingEmail = null;
+      _usernameController.clear();
+      _emailController.clear();
+      _passwordController.clear();
+      _confirmPasswordController.clear();
+      _selectedEgo = 'witty_sidekick';
+      _showProfileSetup = false;
+      _isRegister = false;
+
+    } catch (e) {
+      String friendlyMessage = _getFriendlyErrorMessage(e);
+      setState(() {
+        _errorMsg = friendlyMessage;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _skipProfileSetup() {
+    setState(() {
+      _pendingUserId = null;
+      _pendingEmail = null;
+      _usernameController.clear();
+      _showProfileSetup = false;
+      _isRegister = false;
+    });
   }
 
   /// Maps backend errors to user-friendly professional messages
@@ -375,157 +508,380 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
-              child: AnimatedContainer(
+              child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-                padding: const EdgeInsets.all(28.0),
-                decoration: BoxDecoration(
-                  color: const Color(0xCC111827),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0x1CFFFFFF), width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
-                      blurRadius: 30,
-                      offset: const Offset(0, 10),
-                    )
-                  ],
-                ),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Header Logo & Title
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF3B82F6).withOpacity(0.3),
-                                  blurRadius: 10,
-                                )
-                              ],
-                            ),
-                            child: const Icon(Icons.rocket_launch, size: 28, color: Colors.white),
-                          ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'Sobat AI',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.0,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _isRegister ? 'Buat akun kognitif Anda' : 'Masuk ke Asisten Pribadi',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.grey, fontSize: 14),
-                      ),
-                      const SizedBox(height: 24),
-                      if (_errorMsg.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          margin: const EdgeInsets.only(bottom: 16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEF4444).withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
-                          ),
-                          child: Text(
-                            _errorMsg,
-                            style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13),
-                          ),
-                        ),
-                      if (_isRegister) ...[
-                        TextFormField(
-                          controller: _fullnameController,
-                          decoration: _inputDecoration('Nama Lengkap', Icons.person),
-                          validator: (val) => val == null || val.isEmpty ? 'Nama wajib diisi' : null,
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      TextFormField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: _inputDecoration('Email', Icons.email),
-                        validator: (val) => val == null || !val.contains('@') ? 'Email tidak valid' : null,
-                      ),
-                      const SizedBox(height: 16),
-                       TextFormField(
-                        controller: _passwordController,
-                        obscureText: _obscurePassword,
-                        decoration: _inputDecoration(
-                          'Password',
-                          Icons.lock,
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                              color: Colors.grey,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
-                          ),
-                        ),
-                        validator: (val) => val == null || val.length < 6 ? 'Password minimal 6 karakter' : null,
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: _isLoading ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: const Color(0xFF3B82F6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          elevation: 3,
-                          shadowColor: const Color(0xFF3B82F6).withOpacity(0.4),
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                              )
-                            : Text(
-                                _isRegister ? 'DAFTAR' : 'MASUK CEPAT',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.0, color: Colors.white),
-                              ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _isRegister = !_isRegister;
-                            _errorMsg = '';
-                          });
-                        },
-                        child: Text(
-                          _isRegister ? 'Sudah punya akun? Login disini' : 'Belum punya akun? Daftar gratis',
-                          style: const TextStyle(color: Color(0xFF3B82F6)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                child: _showProfileSetup
+                    ? _buildProfileSetupForm()
+                    : _buildLoginRegisterForm(),
               ),
             ),
           )
         ],
+      ),
+    );
+  }
+
+  Widget _buildLoginRegisterForm() {
+    return Container(
+      key: const ValueKey('login_register'),
+      padding: const EdgeInsets.all(28.0),
+      decoration: BoxDecoration(
+        color: const Color(0xCC111827),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0x1CFFFFFF), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.4),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+          )
+        ],
+      ),
+      child: Form(
+        key: _formKeyLogin,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header Logo & Title
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF3B82F6).withOpacity(0.3),
+                        blurRadius: 10,
+                      )
+                    ],
+                  ),
+                  child: const Icon(Icons.rocket_launch, size: 28, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Sobat AI',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.0,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _isRegister ? 'Buat akun kognitif Anda' : 'Masuk ke Asisten Pribadi',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            if (_errorMsg.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
+                ),
+                child: Text(
+                  _errorMsg,
+                  style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13),
+                ),
+              ),
+            TextFormField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: _inputDecoration('Email', Icons.email),
+              validator: (val) => val == null || !val.contains('@') ? 'Email tidak valid' : null,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _passwordController,
+              obscureText: _obscurePassword,
+              decoration: _inputDecoration(
+                'Password',
+                Icons.lock,
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                    color: Colors.grey,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _obscurePassword = !_obscurePassword;
+                    });
+                  },
+                ),
+              ),
+              validator: (val) => val == null || val.length < 6 ? 'Password minimal 6 karakter' : null,
+            ),
+            if (_isRegister) ...[
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _confirmPasswordController,
+                obscureText: _obscureConfirmPassword,
+                decoration: _inputDecoration(
+                  'Konfirmasi Password',
+                  Icons.lock_outline,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                      color: Colors.grey,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _obscureConfirmPassword = !_obscureConfirmPassword;
+                      });
+                    },
+                  ),
+                ),
+                validator: (val) {
+                  if (val == null || val.isEmpty) {
+                    return 'Konfirmasi password wajib diisi';
+                  }
+                  if (val != _passwordController.text) {
+                    return 'Password tidak cocok';
+                  }
+                  return null;
+                },
+              ),
+            ],
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _isLoading ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: const Color(0xFF3B82F6),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 3,
+                shadowColor: const Color(0xFF3B82F6).withOpacity(0.4),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : Text(
+                      _isRegister ? 'DAFTAR' : 'MASUK CEPAT',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.0, color: Colors.white),
+                    ),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _isRegister = !_isRegister;
+                  _errorMsg = '';
+                });
+              },
+              child: Text(
+                _isRegister ? 'Sudah punya akun? Login disini' : 'Belum punya akun? Daftar gratis',
+                style: const TextStyle(color: Color(0xFF3B82F6)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileSetupForm() {
+    return Container(
+      key: const ValueKey('profile_setup'),
+      padding: const EdgeInsets.all(28.0),
+      decoration: BoxDecoration(
+        color: const Color(0xCC111827),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0x1CFFFFFF), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.4),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+          )
+        ],
+      ),
+      child: Form(
+        key: _formKeyProfile,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF3B82F6).withOpacity(0.3),
+                        blurRadius: 10,
+                      )
+                    ],
+                  ),
+                  child: const Icon(Icons.person_add, size: 28, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Lengkapi Profil',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.0,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Isi data di bawah untuk melanjutkan',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            if (_errorMsg.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
+                ),
+                child: Text(
+                  _errorMsg,
+                  style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13),
+                ),
+              ),
+            // Nama User Field
+            TextFormField(
+              controller: _usernameController,
+              decoration: _inputDecoration('Nama User', Icons.person),
+              validator: (val) => val == null || val.trim().isEmpty ? 'Nama user wajib diisi' : null,
+            ),
+            const SizedBox(height: 20),
+            // Ego Selection
+            const Text(
+              'Pilih Karakter AI Anda',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ..._egoOptions.map((ego) => _buildEgoOption(ego)),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _isLoading ? null : _submitProfileSetup,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: const Color(0xFF3B82F6),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 3,
+                shadowColor: const Color(0xFF3B82F6).withOpacity(0.4),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Text(
+                      'LANJUTKAN',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.0, color: Colors.white),
+                    ),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: _skipProfileSetup,
+              child: const Text(
+                'Lewati untuk saat ini',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEgoOption(Map<String, dynamic> ego) {
+    final isSelected = _selectedEgo == ego['id'];
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedEgo = ego['id'];
+        });
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.15) : const Color(0xFF0F172A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF3B82F6) : const Color(0x33FFFFFF),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.3) : const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                ego['icon'] as IconData,
+                color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    ego['name'] as String,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.grey[300],
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 14,
+                    ),
+                  ),
+                  Text(
+                    ego['desc'] as String,
+                    style: TextStyle(
+                      color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              const Icon(Icons.check_circle, color: Color(0xFF3B82F6), size: 20),
+          ],
+        ),
       ),
     );
   }
@@ -558,6 +914,399 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   }
 }
 
+// --- Profile Setup Screen (dipisah jadi screen standalone) ---
+class ProfileSetupScreen extends StatefulWidget {
+  const ProfileSetupScreen({super.key});
+
+  @override
+  State<ProfileSetupScreen> createState() => _ProfileSetupScreenState();
+}
+
+class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _usernameController = TextEditingController();
+  bool _isLoading = false;
+  String _selectedEgo = 'witty_sidekick';
+  String _errorMsg = '';
+
+  final List<Map<String, dynamic>> _egoOptions = [
+    {'id': 'witty_sidekick', 'name': 'Sobat AI', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
+    {'id': 'wise_mentor', 'name': 'Guru Bijak', 'desc': 'Bijak & Inspiratif', 'icon': Icons.school},
+    {'id': 'efficient_executive', 'name': 'Eksekutif', 'desc': 'Tegas & Produktif', 'icon': Icons.work},
+    {'id': 'creative_companion', 'name': 'Sahabat Kreatif', 'desc': 'Kreatif & Supportif', 'icon': Icons.lightbulb},
+    {'id': 'calm_balancer', 'name': 'Penyeimbang', 'desc': 'Tenang & Empati', 'icon': Icons.spa},
+  ];
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      setState(() {
+        _errorMsg = '⚠️ Sesi habis. Silakan login ulang.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMsg = '';
+    });
+
+    try {
+      final supabase = Supabase.instance.client;
+
+      // Update user metadata
+      await supabase.auth.updateUser(UserAttributes(
+        data: {
+          'user_nickname': _usernameController.text.trim().split(' ')[0],
+        },
+      ));
+
+      // Create user profile
+      final selectedEgoData = _egoOptions.firstWhere((e) => e['id'] == _selectedEgo);
+
+      await supabase.from('user_profiles').upsert({
+        'id': user.id,
+        'fullname': _usernameController.text.trim(),
+        'user_nickname': _usernameController.text.trim().split(' ')[0],
+        'selected_personality': _selectedEgo,
+        'assistant_name': selectedEgoData['name'],
+      });
+
+      print("Profile setup successful for user: ${user.email}");
+
+      // Navigate to Dashboard
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const DashboardNavigatorScreen()),
+        );
+      }
+
+    } catch (e) {
+      String friendlyMessage = _getFriendlyErrorMessage(e);
+      setState(() {
+        _errorMsg = friendlyMessage;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _skip() async {
+    // Create minimal profile with defaults
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await Supabase.instance.client.from('user_profiles').upsert({
+        'id': user.id,
+        'fullname': user.email?.split('@')[0] ?? 'Pengguna',
+        'user_nickname': user.email?.split('@')[0] ?? 'Pengguna',
+        'selected_personality': 'witty_sidekick',
+        'assistant_name': 'Sobat AI',
+      });
+
+      print("Profile skipped - using defaults");
+
+      // Navigate to Dashboard
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const DashboardNavigatorScreen()),
+        );
+      }
+
+    } catch (e) {
+      print("Skip profile setup error: $e");
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _getFriendlyErrorMessage(dynamic error) {
+    final errorStr = error.toString().toLowerCase();
+    if (errorStr.contains('duplicate') || errorStr.contains('unique constraint')) {
+      return '📋 Profile sudah ada. Silakan refresh.';
+    }
+    if (errorStr.contains('network') || errorStr.contains('connection')) {
+      return '🌐 Koneksi bermasalah. Coba lagi.';
+    }
+    return '⚠️ Terjadi kesalahan. Coba lagi.';
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Background glow
+          Positioned(
+            top: -100,
+            left: -100,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF3B82F6).withOpacity(0.15),
+                    blurRadius: 100,
+                  )
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -150,
+            right: -100,
+            child: Container(
+              width: 400,
+              height: 400,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                    blurRadius: 150,
+                  )
+                ],
+              ),
+            ),
+          ),
+          // Content
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Container(
+                padding: const EdgeInsets.all(28.0),
+                decoration: BoxDecoration(
+                  color: const Color(0xCC111827),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: const Color(0x1CFFFFFF), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 30,
+                      offset: const Offset(0, 10),
+                    )
+                  ],
+                ),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF3B82F6).withOpacity(0.3),
+                                  blurRadius: 10,
+                                )
+                              ],
+                            ),
+                            child: const Icon(Icons.person_add, size: 28, color: Colors.white),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Lengkapi Profil',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.0,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Isi data di bawah untuk melanjutkan',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey, fontSize: 14),
+                      ),
+                      const SizedBox(height: 24),
+                      if (_errorMsg.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEF4444).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
+                          ),
+                          child: Text(
+                            _errorMsg,
+                            style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13),
+                          ),
+                        ),
+                      // Nama User Field
+                      TextFormField(
+                        controller: _usernameController,
+                        decoration: InputDecoration(
+                          labelText: 'Nama User',
+                          prefixIcon: const Icon(Icons.person, color: Color(0xFF3B82F6)),
+                          labelStyle: const TextStyle(color: Colors.grey),
+                          filled: true,
+                          fillColor: const Color(0xFF0F172A),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0x33FFFFFF)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFF3B82F6)),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFEF4444)),
+                          ),
+                        ),
+                        validator: (val) => val == null || val.trim().isEmpty ? 'Nama user wajib diisi' : null,
+                      ),
+                      const SizedBox(height: 20),
+                      // Ego Selection
+                      const Text(
+                        'Pilih Karakter AI Anda',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ..._egoOptions.map((ego) => _buildEgoOption(ego)),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: _isLoading ? null : _submit,
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          backgroundColor: const Color(0xFF3B82F6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          elevation: 3,
+                          shadowColor: const Color(0xFF3B82F6).withOpacity(0.4),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              )
+                            : const Text(
+                                'LANJUTKAN',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.0, color: Colors.white),
+                              ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: _isLoading ? null : _skip,
+                        child: const Text(
+                          'Lewati untuk saat ini',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEgoOption(Map<String, dynamic> ego) {
+    final isSelected = _selectedEgo == ego['id'];
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedEgo = ego['id'];
+        });
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.15) : const Color(0xFF0F172A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF3B82F6) : const Color(0x33FFFFFF),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.3) : const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                ego['icon'] as IconData,
+                color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    ego['name'] as String,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.grey[300],
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 14,
+                    ),
+                  ),
+                  Text(
+                    ego['desc'] as String,
+                    style: TextStyle(
+                      color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              const Icon(Icons.check_circle, color: Color(0xFF3B82F6), size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // --- Main Container with bottom tabs ---
 class DashboardNavigatorScreen extends StatefulWidget {
   const DashboardNavigatorScreen({super.key});
@@ -581,8 +1330,40 @@ class _DashboardNavigatorScreenState extends State<DashboardNavigatorScreen> {
       NativeChatScreen(key: _chatScreenKey),
       const NativeSettingsScreen(),
     ];
+
+    // Set up notification handlers
+    _setupNotificationHandlers();
+
     // Check morning briefing after first frame renders
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkMorningBriefing());
+  }
+
+  void _setupNotificationHandlers() {
+    NotificationService().setHandlers(
+      onBriefing: (data) {
+        if (data['data']?['content'] != null && mounted) {
+          _showBriefingPopup(data['data']['content']);
+        }
+      },
+      onTask: (taskId) {
+        // Navigate to task tab
+        setState(() {
+          _currentIndex = 2; // Settings tab (could be tasks tab)
+        });
+      },
+      onChat: () {
+        // Navigate to chat tab
+        setState(() {
+          _currentIndex = 1;
+        });
+      },
+      onTransaction: (txId) {
+        // Navigate to dashboard
+        setState(() {
+          _currentIndex = 0;
+        });
+      },
+    );
   }
 
   Future<void> _checkMorningBriefing() async {
