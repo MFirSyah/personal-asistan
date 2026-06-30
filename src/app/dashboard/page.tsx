@@ -44,6 +44,9 @@ export default function DashboardPage() {
   const [rawTransactions, setRawTransactions] = useState<any[]>([]);
   const [rawTodos, setRawTodos] = useState<any[]>([]);
   const [activeFormTab, setActiveFormTab] = useState<'money' | 'todo'>('money');
+  const [activeDataTab, setActiveDataTab] = useState<'transactions' | 'todos'>('transactions');
+  const [currentTxPage, setCurrentTxPage] = useState(1);
+  const [currentTodoPage, setCurrentTodoPage] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccessMsg, setSubmitSuccessMsg] = useState('');
   const [submitErrorMsg, setSubmitErrorMsg] = useState('');
@@ -2144,9 +2147,9 @@ export default function DashboardPage() {
                     </>
                   )}
 
-                  <button 
-                    type="submit" 
-                    className="btn" 
+                  <button
+                    type="submit"
+                    className="btn"
                     style={{ background: 'var(--color-success)', marginTop: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
                     disabled={isSubmitting}
                   >
@@ -2156,190 +2159,394 @@ export default function DashboardPage() {
               </div>
             </section>
 
-            {/* Riwayat Transaksi Rapi Formatted as Table */}
-            <div className="card">
-              <div className="card-header">
-                <h3 className="section-title" style={{ borderLeftColor: 'var(--color-primary)' }}>
-                  <span>💰</span> Riwayat Transaksi Keuangan (Money Tracker)
-                </h3>
-                <span className="card-icon">💳</span>
+            {/* ============================================================ */}
+            {/* DATA TABS: Transactions vs Todos - Separate Views */}
+            {/* ============================================================ */}
+
+            {/* Tab Switcher for Data Views */}
+            <div className="card" style={{ padding: '0' }}>
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveDataTab('transactions');
+                    setCurrentTxPage(1);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '14px 16px',
+                    background: activeDataTab === 'transactions' ? 'var(--color-primary)' : 'transparent',
+                    color: activeDataTab === 'transactions' ? 'white' : 'var(--text-secondary)',
+                    border: 'none',
+                    borderBottom: activeDataTab === 'transactions' ? '2px solid var(--color-primary)' : '2px solid transparent',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  💰 Transaksi ({rawTransactions.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveDataTab('todos');
+                    setCurrentTodoPage(1);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '14px 16px',
+                    background: activeDataTab === 'todos' ? 'var(--color-warning)' : 'transparent',
+                    color: activeDataTab === 'todos' ? 'black' : 'var(--text-secondary)',
+                    border: 'none',
+                    borderBottom: activeDataTab === 'todos' ? '2px solid var(--color-warning)' : '2px solid transparent',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  📋 Tugas ({rawTodos.length})
+                </button>
               </div>
-              {rawTransactions.length === 0 ? (
-                <p className="insight-text" style={{ fontStyle: 'italic', padding: '10px' }}>Belum ada data transaksi.</p>
-              ) : (
-                <div className="table-container">
-                  <table className="entries-table">
-                    <thead>
-                      <tr>
-                        <th>Deskripsi</th>
-                        <th>Tipe</th>
-                        <th>Jumlah</th>
-                        <th>Tanggal</th>
-                        <th>Properti Kognitif (Metadata)</th>
-                        <th style={{ width: '100px', textAlign: 'center' }}>Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rawTransactions.map((tx: any, idx: number) => (
-                        <tr key={tx.id || idx}>
-                          <td style={{ fontWeight: 500 }}>
-                            {tx.description}
-                            {tx.dynamic_metadata?.receipt_url && (
-                              <div style={{ marginTop: '6px' }}>
-                                <a 
-                                  href={tx.dynamic_metadata.receipt_url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
-                                  style={{ 
-                                    display: 'inline-flex', 
-                                    alignItems: 'center', 
-                                    gap: '4px', 
-                                    color: 'var(--color-primary)', 
-                                    fontSize: '0.75rem',
-                                    fontWeight: 600,
-                                    textDecoration: 'underline'
-                                  }}
-                                >
-                                  🧾 Lihat Struk
-                                </a>
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            <span style={{ 
-                              padding: '4px 10px', 
-                              borderRadius: '20px', 
-                              fontSize: '0.75rem',
-                              background: tx.type === 'income' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
-                              color: tx.type === 'income' ? 'var(--color-success)' : 'var(--color-danger)',
-                              border: `1px solid ${tx.type === 'income' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
-                              fontWeight: 600
-                            }}>
-                              {tx.type === 'income' ? 'Pemasukan' : 'Pengeluaran'}
-                            </span>
-                          </td>
-                          <td style={{ fontWeight: 700, color: tx.type === 'income' ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                            {tx.type === 'income' ? '+' : '-'} Rp {Number(tx.amount).toLocaleString('id-ID')}
-                          </td>
-                          <td style={{ color: 'var(--text-secondary)' }}>
-                            {tx.transaction_date}
-                            {tx.dynamic_metadata?.jam && (
-                              <span style={{ fontSize: '0.8rem', opacity: 0.8, display: 'block', marginTop: '2px' }}>
-                                🕒 {tx.dynamic_metadata.jam}
-                              </span>
-                            )}
-                          </td>
-                          <td>
-                            {tx.dynamic_metadata && Object.keys(tx.dynamic_metadata).length > 0 ? (
-                              Object.entries(tx.dynamic_metadata)
-                                .filter(([k]) => k !== 'long_term_memory')
-                                .map(([k, v]) => (
-                                  <span key={k} className="entry-meta-tag">{k}: {String(v)}</span>
-                                ))
-                            ) : (
-                              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>-</span>
-                            )}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <button
-                              type="button"
-                              className="btn-delete"
-                              onClick={() => handleDeleteTransaction(tx.id)}
-                            >
-                              🗑️ Hapus
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+
+              {/* ============================================================ */}
+              {/* TRANSACTIONS TABLE */}
+              {/* ============================================================ */}
+              {activeDataTab === 'transactions' && (
+                <div style={{ padding: '16px' }}>
+                  {rawTransactions.length === 0 ? (
+                    <p style={{
+                      color: 'var(--text-secondary)',
+                      fontStyle: 'italic',
+                      textAlign: 'center',
+                      padding: '40px 0'
+                    }}>
+                      Belum ada data transaksi. Mulai chat dengan AI untuk mencatat transaksi!
+                    </p>
+                  ) : (
+                    <>
+                      {/* Sticky Table Container */}
+                      <div style={{
+                        maxHeight: '500px',
+                        overflowY: 'auto',
+                        borderRadius: '8px',
+                        border: '1px solid var(--color-border)',
+                      }}>
+                        <table style={{
+                          width: '100%',
+                          borderCollapse: 'collapse',
+                          fontSize: '0.85rem',
+                        }}>
+                          <thead style={{
+                            position: 'sticky',
+                            top: 0,
+                            background: 'var(--color-surface)',
+                            zIndex: 10,
+                          }}>
+                            <tr>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Deskripsi</th>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Tipe</th>
+                              <th style={{ padding: '12px 16px', textAlign: 'right', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Jumlah</th>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Tanggal & Waktu</th>
+                              <th style={{ padding: '12px 16px', textAlign: 'center', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Aksi</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rawTransactions
+                              .slice((currentTxPage - 1) * 10, currentTxPage * 10)
+                              .map((tx: any, idx: number) => (
+                                <tr key={tx.id || idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                                  <td style={{ padding: '12px 16px', fontWeight: 500 }}>
+                                    {tx.description}
+                                    {tx.dynamic_metadata?.receipt_url && (
+                                      <div style={{ marginTop: '4px' }}>
+                                        <a
+                                          href={tx.dynamic_metadata.receipt_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          style={{
+                                            color: 'var(--color-primary)',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 600,
+                                            textDecoration: 'underline'
+                                          }}
+                                        >
+                                          🧾 Lihat Struk
+                                        </a>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '12px 16px' }}>
+                                    <span style={{
+                                      padding: '4px 10px',
+                                      borderRadius: '20px',
+                                      fontSize: '0.75rem',
+                                      background: tx.type === 'income' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                                      color: tx.type === 'income' ? 'var(--color-success)' : 'var(--color-danger)',
+                                      fontWeight: 600
+                                    }}>
+                                      {tx.type === 'income' ? '📥 Masuk' : '📤 Keluar'}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: tx.type === 'income' ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                                    {tx.type === 'income' ? '+' : '-'} Rp {Number(tx.amount).toLocaleString('id-ID')}
+                                  </td>
+                                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                    <div>{tx.transaction_date || '-'}</div>
+                                    {tx.dynamic_metadata?.jam && (
+                                      <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
+                                        🕒 {tx.dynamic_metadata.jam}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteTransaction(tx.id)}
+                                      style={{
+                                        background: 'rgba(239, 68, 68, 0.1)',
+                                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                                        color: 'var(--color-danger)',
+                                        padding: '6px 12px',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.75rem',
+                                      }}
+                                    >
+                                      🗑️ Hapus
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Pagination */}
+                      {Math.ceil(rawTransactions.length / 10) > 1 && (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginTop: '16px',
+                          padding: '12px',
+                          background: 'var(--color-bg)',
+                          borderRadius: '8px',
+                        }}>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentTxPage(p => Math.max(1, p - 1))}
+                            disabled={currentTxPage === 1}
+                            style={{
+                              padding: '6px 12px',
+                              background: 'var(--color-surface)',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              cursor: currentTxPage === 1 ? 'not-allowed' : 'pointer',
+                              opacity: currentTxPage === 1 ? 0.5 : 1,
+                            }}
+                          >
+                            ←
+                          </button>
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                            Halaman {currentTxPage} dari {Math.ceil(rawTransactions.length / 10)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentTxPage(p => Math.min(Math.ceil(rawTransactions.length / 10), p + 1))}
+                            disabled={currentTxPage >= Math.ceil(rawTransactions.length / 10)}
+                            style={{
+                              padding: '6px 12px',
+                              background: 'var(--color-surface)',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              cursor: currentTxPage >= Math.ceil(rawTransactions.length / 10) ? 'not-allowed' : 'pointer',
+                              opacity: currentTxPage >= Math.ceil(rawTransactions.length / 10) ? 0.5 : 1,
+                            }}
+                          >
+                            →
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
-            </div>
 
-            {/* Riwayat Tugas Rapi Formatted as Table */}
-            <div className="card">
-              <div className="card-header">
-                <h3 className="section-title" style={{ borderLeftColor: 'var(--color-warning)' }}>
-                  <span>✅</span> Daftar Tugas Kognitif (To-Do List)
-                </h3>
-                <span className="card-icon">📋</span>
-              </div>
-              {rawTodos.length === 0 ? (
-                <p className="insight-text" style={{ fontStyle: 'italic', padding: '10px' }}>Belum ada data tugas.</p>
-              ) : (
-                <div className="table-container">
-                  <table className="entries-table">
-                    <thead>
-                      <tr>
-                        <th>Nama Tugas</th>
-                        <th>Status</th>
-                        <th>Tenggat Waktu</th>
-                        <th>Properti Kognitif (Metadata)</th>
-                        <th style={{ width: '180px', textAlign: 'center' }}>Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rawTodos.map((todo: any, idx: number) => (
-                        <tr key={todo.id || idx}>
-                          <td style={{ fontWeight: 500 }}>{todo.task_name}</td>
-                          <td>
-                            <span style={{ 
-                              padding: '4px 10px', 
-                              borderRadius: '20px', 
-                              fontSize: '0.75rem',
-                              background: todo.status === 'completed' ? 'rgba(16,185,129,0.12)' : todo.status === 'cancelled' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
-                              color: todo.status === 'completed' ? 'var(--color-success)' : todo.status === 'cancelled' ? 'var(--color-danger)' : 'var(--color-warning)',
-                              border: `1px solid ${todo.status === 'completed' ? 'rgba(16,185,129,0.2)' : todo.status === 'cancelled' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)'}`,
-                              fontWeight: 600
-                            }}>
-                              {todo.status === 'completed' ? 'Selesai' : todo.status === 'cancelled' ? 'Batal' : 'Tertunda'}
-                            </span>
-                          </td>
-                          <td style={{ color: 'var(--text-secondary)' }}>
-                            {todo.due_date || <span style={{ color: 'var(--text-muted)' }}>-</span>}
-                            {todo.dynamic_metadata?.jam && (
-                              <span style={{ fontSize: '0.8rem', opacity: 0.8, display: 'block', marginTop: '2px' }}>
-                                🕒 {todo.dynamic_metadata.jam}
-                              </span>
-                            )}
-                          </td>
-                          <td>
-                            {todo.dynamic_metadata && Object.keys(todo.dynamic_metadata).length > 0 ? (
-                              Object.entries(todo.dynamic_metadata)
-                                .filter(([k]) => k !== 'long_term_memory')
-                                .map(([k, v]) => (
-                                  <span key={k} className="entry-meta-tag">{k}: {String(v)}</span>
-                                ))
-                            ) : (
-                              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>-</span>
-                            )}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
-                              <select
-                                className="select-status-inline"
-                                value={todo.status}
-                                onChange={(e) => handleUpdateTodoStatus(todo.id, e.target.value as any)}
-                              >
-                                <option value="pending">Tertunda</option>
-                                <option value="completed">Selesai</option>
-                                <option value="cancelled">Batal</option>
-                              </select>
-                              <button
-                                type="button"
-                                className="btn-delete"
-                                onClick={() => handleDeleteTodo(todo.id)}
-                                title="Hapus Tugas"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {/* ============================================================ */}
+              {/* TODOS TABLE */}
+              {/* ============================================================ */}
+              {activeDataTab === 'todos' && (
+                <div style={{ padding: '16px' }}>
+                  {rawTodos.length === 0 ? (
+                    <p style={{
+                      color: 'var(--text-secondary)',
+                      fontStyle: 'italic',
+                      textAlign: 'center',
+                      padding: '40px 0'
+                    }}>
+                      Belum ada tugas. Mulai chat dengan AI untuk mencatat tugas!
+                    </p>
+                  ) : (
+                    <>
+                      {/* Sticky Table Container */}
+                      <div style={{
+                        maxHeight: '500px',
+                        overflowY: 'auto',
+                        borderRadius: '8px',
+                        border: '1px solid var(--color-border)',
+                      }}>
+                        <table style={{
+                          width: '100%',
+                          borderCollapse: 'collapse',
+                          fontSize: '0.85rem',
+                        }}>
+                          <thead style={{
+                            position: 'sticky',
+                            top: 0,
+                            background: 'var(--color-surface)',
+                            zIndex: 10,
+                          }}>
+                            <tr>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Nama Tugas</th>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Status</th>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Tenggat Waktu</th>
+                              <th style={{ padding: '12px 16px', textAlign: 'center', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Aksi</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rawTodos
+                              .slice((currentTodoPage - 1) * 10, currentTodoPage * 10)
+                              .map((todo: any, idx: number) => (
+                                <tr key={todo.id || idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                                  <td style={{ padding: '12px 16px', fontWeight: 500 }}>
+                                    {todo.task_name}
+                                  </td>
+                                  <td style={{ padding: '12px 16px' }}>
+                                    <span style={{
+                                      padding: '4px 10px',
+                                      borderRadius: '20px',
+                                      fontSize: '0.75rem',
+                                      background: todo.status === 'completed' ? 'rgba(16,185,129,0.12)' : todo.status === 'cancelled' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
+                                      color: todo.status === 'completed' ? 'var(--color-success)' : todo.status === 'cancelled' ? 'var(--color-danger)' : 'var(--color-warning)',
+                                      fontWeight: 600
+                                    }}>
+                                      {todo.status === 'completed' ? '✅ Selesai' : todo.status === 'cancelled' ? '❌ Batal' : '⏳ Tertunda'}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                    <div>{todo.due_date ? new Date(todo.due_date).toLocaleDateString('id-ID') : '-'}</div>
+                                    {todo.dynamic_metadata?.jam && (
+                                      <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
+                                        🕒 {todo.dynamic_metadata.jam}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                                      <select
+                                        value={todo.status}
+                                        onChange={(e) => handleUpdateTodoStatus(todo.id, e.target.value as any)}
+                                        style={{
+                                          padding: '6px 10px',
+                                          background: 'var(--color-surface)',
+                                          border: '1px solid var(--color-border)',
+                                          borderRadius: '6px',
+                                          color: 'var(--text-primary)',
+                                          cursor: 'pointer',
+                                          fontSize: '0.75rem',
+                                        }}
+                                      >
+                                        <option value="pending">Tertunda</option>
+                                        <option value="completed">Selesai</option>
+                                        <option value="cancelled">Batal</option>
+                                      </select>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteTodo(todo.id)}
+                                        style={{
+                                          background: 'rgba(239, 68, 68, 0.1)',
+                                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                                          color: 'var(--color-danger)',
+                                          padding: '6px 10px',
+                                          borderRadius: '6px',
+                                          cursor: 'pointer',
+                                          fontSize: '0.75rem',
+                                        }}
+                                      >
+                                        🗑️
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Pagination */}
+                      {Math.ceil(rawTodos.length / 10) > 1 && (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginTop: '16px',
+                          padding: '12px',
+                          background: 'var(--color-bg)',
+                          borderRadius: '8px',
+                        }}>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentTodoPage(p => Math.max(1, p - 1))}
+                            disabled={currentTodoPage === 1}
+                            style={{
+                              padding: '6px 12px',
+                              background: 'var(--color-surface)',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              cursor: currentTodoPage === 1 ? 'not-allowed' : 'pointer',
+                              opacity: currentTodoPage === 1 ? 0.5 : 1,
+                            }}
+                          >
+                            ←
+                          </button>
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                            Halaman {currentTodoPage} dari {Math.ceil(rawTodos.length / 10)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentTodoPage(p => Math.min(Math.ceil(rawTodos.length / 10), p + 1))}
+                            disabled={currentTodoPage >= Math.ceil(rawTodos.length / 10)}
+                            style={{
+                              padding: '6px 12px',
+                              background: 'var(--color-surface)',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              cursor: currentTodoPage >= Math.ceil(rawTodos.length / 10) ? 'not-allowed' : 'pointer',
+                              opacity: currentTodoPage >= Math.ceil(rawTodos.length / 10) ? 0.5 : 1,
+                            }}
+                          >
+                            →
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </div>
