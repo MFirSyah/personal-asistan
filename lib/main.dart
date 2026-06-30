@@ -3519,17 +3519,6 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
     await LocalDatabaseHelper.instance.clearAllCache();
   }
 
-  // Layer 12 verification: Trigger deliberate crash to check Sentry captures
-  void _triggerSentryCrash() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Crash dilaporkan ke Sentry...'),
-        backgroundColor: Color(0xFF8B5CF6),
-      ),
-    );
-    throw Exception('Test Sentry Error: Sengaja dipicu dari halaman Pengaturan Sobat AI');
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -3896,20 +3885,7 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Sentry test crash button
-                  ElevatedButton.icon(
-                    onPressed: _triggerSentryCrash,
-                    icon: const Icon(Icons.bug_report, color: Colors.white),
-                    label: const Text('TEST CRASH SENTRY (TRACKING)', style: TextStyle(color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: const Color(0xFF8B5CF6),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Sentry Test Button
+                  // Sentry Test Button (tanpa crash)
                   OutlinedButton.icon(
                     onPressed: () async {
                       try {
