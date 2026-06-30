@@ -255,7 +255,7 @@ class NotificationService {
 
     await _localNotifications.show(
       message.hashCode,
-      message.notification?.title ?? 'Sobat AI',
+      message.notification?.title ?? 'Personal Asistan',
       message.notification?.body ?? 'Ada pesan baru',
       details,
       payload: jsonEncode(message.data),

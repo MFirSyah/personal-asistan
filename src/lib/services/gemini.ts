@@ -36,11 +36,14 @@ export interface ExtractedData {
     amount: number;
     type: 'income' | 'expense';
     description: string;
+    transaction_date?: string;
+    jam?: string;
   }>;
   tasks: Array<{
     task_name: string;
-    due_date?: string; // ISO string
+    due_date?: string;
     status: 'pending';
+    jam?: string;
   }>;
   moods: Array<{
     mood: string;
@@ -62,23 +65,28 @@ export async function runStage1Extraction(
   const ai = getGenAI();
 
   const prompt = `You are a structured data extractor. You must analyze the following user message and extract any relevant transactions (income or expense), tasks/to-dos, moods, or habits.
-  
+
 User Message: "${userMessage}"
 Current Date Context: "${currentDateStr}"
 
 Extraction Rules:
-1. "transactions": Extract amounts and types. E.g., "beli kopi 25000" is expense, 25000, description: "kopi". "dapat transferan 500000" is income, 500000, description: "transferan". Ensure amount is a number.
-2. "tasks": Extract task name, and due date if specified (convert it to ISO date format based on current date context). E.g., "laporan besok" -> task_name: "laporan", due_date: tomorrow, status: "pending".
-3. "moods": Extract user mood or feelings mentioned. E.g., "capek banget" -> mood: "capek", description: "capek banget".
+1. "transactions": Extract amounts, types, AND dates/times if mentioned.
+   - E.g., "beli kopi 25000 jam 3 sore" -> amount: 25000, type: "expense", description: "kopi", jam: "15:00"
+   - E.g., "gaji tanggal 6 Juni" -> amount: [extract], type: "income", description: "gaji", transaction_date: "2026-06-06"
+   - E.g., "tanggal 8 Juni jam 1 siang" -> transaction_date: "2026-06-08", jam: "13:00"
+   - If date/time NOT mentioned, OMIT the field (don't include null/empty)
+2. "tasks": Extract task name, due date if specified, AND time if mentioned.
+   - E.g., "tugas besok jam 9 pagi" -> task_name: "tugas", due_date: tomorrow ISO, jam: "09:00"
+3. "moods": Extract user mood or feelings mentioned.
 4. "habits": Extract habits checked in or mentioned.
 
 Return the response STRICTLY in this JSON format:
 {
   "transactions": [
-    { "amount": number, "type": "income" | "expense", "description": string }
+    { "amount": number, "type": "income" | "expense", "description": string, "transaction_date"?: "YYYY-MM-DD", "jam"?: "HH:MM" }
   ],
   "tasks": [
-    { "task_name": string, "due_date": string (ISO 8601), "status": "pending" }
+    { "task_name": string, "due_date"?: string (ISO 8601), "status": "pending", "jam"?: "HH:MM" }
   ],
   "moods": [
     { "mood": string, "description": string }
@@ -87,6 +95,8 @@ Return the response STRICTLY in this JSON format:
     { "habit_name": string, "description": string }
   ]
 }
+
+IMPORTANT: Only include transaction_date and jam fields if they are explicitly mentioned or can be inferred from the message. If the user says "hari ini" or "sekarang", use today's date "${currentDateStr}" converted to YYYY-MM-DD format.
 
 If any category has no entries, return an empty array for that key. Do not include any extra text outside the JSON.`;
 

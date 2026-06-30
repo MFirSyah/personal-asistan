@@ -33,7 +33,7 @@ export default function DashboardPage() {
   const [isFromMobile, setIsFromMobile] = useState(false);
   const [profile, setProfile] = useState<any>({
     fullname: 'Sobat Setia',
-    assistant_name: 'Sobat AI',
+    assistant_name: 'Personal Asistan',
     user_nickname: 'Sobat',
     created_at: null,
   });
@@ -1083,7 +1083,7 @@ export default function DashboardPage() {
         <div style={{ maxWidth: '400px', width: '100%' }}>
           <h2 style={{ fontFamily: 'var(--font-title)', marginBottom: '16px' }}>Dashboard Terkunci</h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '0.95rem' }}>
-            Halaman ini adalah dashboard privat yang hanya dapat diakses setelah masuk ke akun Sobat AI.
+            Halaman ini adalah dashboard privat yang hanya dapat diakses setelah masuk ke akun Personal Asistan.
           </p>
           
           {errorMsg && (

@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ should_greet: false, greeting: null });
     }
 
-    const assistantName = profile?.assistant_name || 'Sobat AI';
+    const assistantName = profile?.assistant_name || 'Personal Asistan';
     const userNickname = profile?.user_nickname || 'Sobat';
     const personalityId = profile?.selected_personality || 'witty_sidekick';
 
