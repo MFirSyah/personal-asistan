@@ -459,7 +459,7 @@ export default function Home() {
         <div className="wizard-header">
           <Image
             src="/next.svg"
-            alt="Sobat AI Logo"
+            alt="Personal Asistan Logo"
             width={95}
             height={22}
             style={{ marginBottom: '16px', opacity: 0.9 }}
@@ -467,7 +467,7 @@ export default function Home() {
           />
           <h2>SOBAT AI — ASISTEN PRIBADI</h2>
           <p>
-            {step === 1 && 'Selamat datang di Sobat AI — Asisten Waktu & Kognitif Anda'}
+            {step === 1 && 'Selamat datang di Personal Asistan — Asisten Waktu & Kognitif Anda'}
             {step === 2 && 'Pilih cara untuk terhubung ke Dasbor Pribadi Anda'}
             {step === 3 && 'Masuk dengan Akun Sesi Aktif'}
             {step === 4 && 'Daftar Akun Baru (Database Aman & Terenkripsi)'}

@@ -214,7 +214,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   String _selectedEgo = 'witty_sidekick';
 
   final List<Map<String, dynamic>> _egoOptions = [
-    {'id': 'witty_sidekick', 'name': 'Sobat AI', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
+    {'id': 'witty_sidekick', 'name': 'Personal Asistan', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
     {'id': 'wise_mentor', 'name': 'Guru Bijak', 'desc': 'Bijak & Inspiratif', 'icon': Icons.school},
     {'id': 'efficient_executive', 'name': 'Eksekutif', 'desc': 'Tegas & Produktif', 'icon': Icons.work},
     {'id': 'creative_companion', 'name': 'Sahabat Kreatif', 'desc': 'Kreatif & Supportif', 'icon': Icons.lightbulb},
@@ -569,7 +569,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                 ),
                 const SizedBox(width: 12),
                 const Text(
-                  'Sobat AI',
+                  'Personal Asistan',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -942,7 +942,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   String _errorMsg = '';
 
   final List<Map<String, dynamic>> _egoOptions = [
-    {'id': 'witty_sidekick', 'name': 'Sobat AI', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
+    {'id': 'witty_sidekick', 'name': 'Personal Asistan', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
     {'id': 'wise_mentor', 'name': 'Guru Bijak', 'desc': 'Bijak & Inspiratif', 'icon': Icons.school},
     {'id': 'efficient_executive', 'name': 'Eksekutif', 'desc': 'Tegas & Produktif', 'icon': Icons.work},
     {'id': 'creative_companion', 'name': 'Sahabat Kreatif', 'desc': 'Kreatif & Supportif', 'icon': Icons.lightbulb},
@@ -1026,7 +1026,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         'fullname': user.email?.split('@')[0] ?? 'Pengguna',
         'user_nickname': user.email?.split('@')[0] ?? 'Pengguna',
         'selected_personality': 'witty_sidekick',
-        'assistant_name': 'Sobat AI',
+        'assistant_name': 'Personal Asistan',
       });
 
       print("Profile skipped - using defaults");
@@ -1809,7 +1809,7 @@ class _NativeChatScreenState extends State<NativeChatScreen> {
   final _dbHelper = LocalDatabaseHelper.instance;
   final List<Map<String, dynamic>> _messages = [];
   bool _isTyping = false;
-  String _assistantName = 'Sobat AI';
+  String _assistantName = 'Personal Asistan';
   String _preferredLanguage = 'id';
   bool _greetingChecked = false;
 
@@ -1830,7 +1830,7 @@ class _NativeChatScreenState extends State<NativeChatScreen> {
             .maybeSingle();
         if (profileRes != null && mounted) {
           setState(() {
-            _assistantName = profileRes['assistant_name'] ?? 'Sobat AI';
+            _assistantName = profileRes['assistant_name'] ?? 'Personal Asistan';
             final meta = profileRes['dynamic_metadata'] as Map<String, dynamic>?;
             _preferredLanguage = meta?['language'] ?? 'id';
           });
@@ -1840,7 +1840,7 @@ class _NativeChatScreenState extends State<NativeChatScreen> {
               'id': user.id,
               'fullname': user.email?.split('@')[0] ?? 'Pengguna',
               'selected_personality': 'witty_sidekick',
-              'assistant_name': 'Sobat AI',
+              'assistant_name': 'Personal Asistan',
               'user_nickname': user.email?.split('@')[0] ?? 'Pengguna',
               'dynamic_metadata': {
                 'future_plans': []
@@ -3243,7 +3243,7 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
   String _fullname = 'Memuat...';
   String _userNickname = 'Memuat...';
   String _userEmail = '-';
-  String _assistantName = 'Sobat AI';
+  String _assistantName = 'Personal Asistan';
   String _selectedPersonality = 'witty_sidekick';
   String _longTermMemory = 'Belum ada data memori kognitif. Gunakan aplikasi dan chat untuk melatih memori AI.';
   String _preferredLanguage = 'id';
@@ -3254,7 +3254,7 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
 
   // Sync ego options with registration form
   final List<Map<String, dynamic>> _egoOptions = [
-    {'id': 'witty_sidekick', 'name': 'Sobat AI', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
+    {'id': 'witty_sidekick', 'name': 'Personal Asistan', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
     {'id': 'wise_mentor', 'name': 'Guru Bijak', 'desc': 'Bijak & Inspiratif', 'icon': Icons.school},
     {'id': 'efficient_executive', 'name': 'Eksekutif', 'desc': 'Tegas & Produktif', 'icon': Icons.work},
     {'id': 'creative_companion', 'name': 'Sahabat Kreatif', 'desc': 'Kreatif & Supportif', 'icon': Icons.lightbulb},
@@ -3299,7 +3299,7 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
             'id': user.id,
             'fullname': user.email?.split('@')[0] ?? 'Pengguna',
             'selected_personality': 'witty_sidekick',
-            'assistant_name': 'Sobat AI',
+            'assistant_name': 'Personal Asistan',
             'user_nickname': user.email?.split('@')[0] ?? 'Pengguna',
             'dynamic_metadata': {
               'future_plans': []
@@ -3321,7 +3321,7 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
           _fullname = profileData['fullname'] ?? 'Sobat';
           _userNickname = profileData['user_nickname'] ?? 'Sobat';
           _userEmail = user.email ?? '-';
-          _assistantName = profileData['assistant_name'] ?? 'Sobat AI';
+          _assistantName = profileData['assistant_name'] ?? 'Personal Asistan';
           _selectedPersonality = profileData['selected_personality'] ?? 'witty_sidekick';
 
           final meta = profileData['dynamic_metadata'] as Map<String, dynamic>?;
@@ -3994,7 +3994,7 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
                   OutlinedButton.icon(
                     onPressed: () async {
                       try {
-                        throw Exception('Test Sentry Error: Sengaja dipicu dari halaman Pengaturan Sobat AI');
+                        throw Exception('Test Sentry Error: Sengaja dipicu dari halaman Pengaturan Personal Asistan');
                       } catch (e, stackTrace) {
                         await Sentry.captureException(e, stackTrace: stackTrace);
                         ScaffoldMessenger.of(context).showSnackBar(

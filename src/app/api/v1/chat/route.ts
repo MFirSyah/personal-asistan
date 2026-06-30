@@ -141,16 +141,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Parallel fetch: User Profile & selected personality
-    const [profileResult] = await Promise.all([
+    // 5. Parallel fetch: User Profile, selected personality, AND chat preferences
+    const [profileResult, chatPrefsResult] = await Promise.all([
       supabaseAdmin
         .from('user_profiles')
         .select('fullname, selected_personality, assistant_name, user_nickname, dynamic_metadata')
         .eq('id', userId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('chat_preferences')
+        .select('*')
+        .eq('user_id', userId)
         .maybeSingle()
     ]);
 
     let profile = profileResult.data;
+    const chatPrefs = chatPrefsResult.data;
 
     if (!profile) {
       // Create a default profile if it doesn't exist yet
@@ -160,7 +166,7 @@ export async function POST(req: NextRequest) {
           id: userId,
           fullname: 'Sobat Baru',
           selected_personality: 'witty_sidekick',
-          assistant_name: 'Sobat AI',
+          assistant_name: 'Personal Asistan',
           user_nickname: 'Sobat',
         })
         .select()
@@ -172,14 +178,14 @@ export async function POST(req: NextRequest) {
       profile = newProfile || {
         fullname: 'Sobat Baru',
         selected_personality: 'witty_sidekick',
-        assistant_name: 'Sobat AI',
+        assistant_name: 'Personal Asistan',
         user_nickname: 'Sobat',
         dynamic_metadata: {},
       };
     }
 
     const personalityId = profile?.selected_personality || 'witty_sidekick';
-    const assistantName = profile?.assistant_name || 'Sobat AI';
+    const assistantName = profile?.assistant_name || 'Personal Asistan';
     const userNickname = profile?.user_nickname || 'Sobat';
 
     // Get personality template (after we know personalityId)
@@ -203,6 +209,55 @@ export async function POST(req: NextRequest) {
     // Inject Long Term Memory if it exists
     if (profile?.dynamic_metadata?.long_term_memory) {
       personalityTemplate += `\n\nLONG TERM MEMORY ABOUT USER (Use this context if relevant, but do not mention it explicitly unless asked):\n${profile.dynamic_metadata.long_term_memory}`;
+    }
+
+    // ============================================================
+    // INJECT LEARNED PREFERENCES (Skema 1 + Hybrid)
+    // ============================================================
+    if (chatPrefs) {
+      let prefsInstruction = '\n\n┌──────────────────────────────────────────────────────────┐\n│  🎯 LEARNED PREFERENCES ABOUT THIS USER:                   │';
+
+      // Communication style
+      if (chatPrefs.communication_style && chatPrefs.communication_style !== 'mix') {
+        prefsInstruction += `\n│  • Gaya komunikasi: ${chatPrefs.communication_style.toUpperCase()}`;
+      }
+
+      // Explanation style
+      if (chatPrefs.explanation_style === 'brief') {
+        prefsInstruction += '\n│  • Penjelasan: SINGKAT & TO THE POINT';
+      } else if (chatPrefs.explanation_style === 'detailed') {
+        prefsInstruction += '\n│  • Penjelasan: DETAIL dengan contoh';
+      }
+
+      // Frequent topics
+      if (chatPrefs.topic_frequencies && Object.keys(chatPrefs.topic_frequencies).length > 0) {
+        const topTopics = Object.entries(chatPrefs.topic_frequencies)
+          .sort((a, b) => (b[1] as number) - (a[1] as number))
+          .slice(0, 5)
+          .map(([topic, count]) => `${topic} (${count}x)`)
+          .join(', ');
+        if (topTopics) {
+          prefsInstruction += `\n│  • Topik favorit: ${topTopics}`;
+        }
+      }
+
+      // Emoji preference
+      if (chatPrefs.prefers_emoji === false) {
+        prefsInstruction += '\n│  • Hindari emoji, gunakan teks saja';
+      }
+
+      // Lists preference
+      if (chatPrefs.prefers_lists === true) {
+        prefsInstruction += '\n│  • Gunakan LIST/POIN jika ada beberapa hal';
+      }
+
+      // Avoided words
+      if (chatPrefs.avoided_words && chatPrefs.avoided_words.length > 0) {
+        prefsInstruction += `\n│  • Hindari kata-kata: ${chatPrefs.avoided_words.slice(0, 3).join(', ')}`;
+      }
+
+      prefsInstruction += '\n└──────────────────────────────────────────────────────────┘';
+      personalityTemplate += prefsInstruction;
     }
 
     const temperature = Number(personality?.temperature ?? 0.3);
@@ -353,6 +408,102 @@ export async function POST(req: NextRequest) {
       sender_personality_id: personalityId,
       message: fullResponse,
     });
+
+    // ============================================================
+    // BACKGROUND LEARNING ENGINE (Skema 1 + Hybrid)
+    // Analyze user message and update chat_preferences
+    // ============================================================
+    const runLearningEngine = async () => {
+      try {
+        // A. Topic Detection (simple keyword-based)
+        const topicKeywords: Record<string, string[]> = {
+          'keuangan': ['uang', 'rupiah', 'rp', 'gaji', 'transaksi', 'belanja', 'budget', 'hemat', 'tabungan', 'kredit', 'hutang'],
+          'kesehatan': ['sehat', 'olahraga', 'diet', 'makan', 'tidur', 'sakit', 'obat', 'vitamin', 'fitnes', 'gym'],
+          'pekerjaan': ['kerja', 'kantor', 'meeting', 'deadline', 'bos', 'karyawan', 'proyek', 'presentasi', 'email'],
+          'pendidikan': ['belajar', 'kursus', 'ujian', 'sekolah', 'kuliah', 'buku', 'materi', 'tugas', 'dosen', 'guru'],
+          'hubungan': ['keluarga', 'pacar', 'teman', 'pasangan', 'orang tua', 'siblings', 'komunikasi', 'masalah'],
+          'produktivitas': ['todo', 'tugas', 'deadline', 'fokus', '拖延', 'efektif', 'manage', 'organisir'],
+          'hiburan': ['film', 'game', 'musik', 'nonton', 'buku', 'series', 'anime', 'drama', 'hobi'],
+          'motivasi': ['semangat', 'motivasi', 'inspirasi', 'sukses', 'gagal', 'tips', 'sukses'],
+        };
+
+        const messageLower = message.toLowerCase();
+        let detectedTopics: string[] = [];
+
+        for (const [topic, keywords] of Object.entries(topicKeywords)) {
+          if (keywords.some(kw => messageLower.includes(kw))) {
+            detectedTopics.push(topic);
+          }
+        }
+
+        // B. Calculate message metrics
+        const wordCount = message.trim().split(/\s+/).length;
+        const hasEmoji = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(message);
+        const hasLists = /^\d+[.)]|[-•*]\s/m.test(message);
+
+        // C. Determine communication style (simple heuristic)
+        let commStyle = 'mix';
+        const formalWords = ['anda', 'saya', 'terima kasih', 'mohon', 'dengan hormat'];
+        const casualWords = ['gue', 'lu', 'gw', 'bang', 'bos', 'siapa tau', 'santai'];
+        const formalCount = formalWords.filter(w => messageLower.includes(w)).length;
+        const casualCount = casualWords.filter(w => messageLower.includes(w)).length;
+
+        if (formalCount > casualCount && formalCount >= 2) {
+          commStyle = 'formal';
+        } else if (casualCount > formalCount && casualCount >= 2) {
+          commStyle = 'casual';
+        }
+
+        // D. Build update object
+        const updateData: Record<string, any> = {
+          total_chats: supabaseAdmin.rpc('increment', { x: 1 }).then(() => { }).catch(() => { }),
+          last_chat_at: new Date().toISOString(),
+          avg_message_length: chatPrefs?.avg_message_length
+            ? Math.round((chatPrefs.avg_message_length + wordCount) / 2)
+            : wordCount,
+        };
+
+        // Update topic frequencies
+        if (detectedTopics.length > 0) {
+          const currentFreqs = (chatPrefs?.topic_frequencies as Record<string, number>) || {};
+          const newFreqs = { ...currentFreqs };
+          detectedTopics.forEach(topic => {
+            newFreqs[topic] = (newFreqs[topic] || 0) + 1;
+          });
+          updateData.topic_frequencies = newFreqs;
+        }
+
+        // Update communication style (only if confident)
+        if (commStyle !== 'mix' && chatPrefs?.communication_style === 'mix') {
+          // Only update if user consistently uses same style (after 5 chats)
+          const totalChats = (chatPrefs?.total_chats || 0) + 1;
+          if (totalChats >= 5) {
+            updateData.communication_style = commStyle;
+          }
+        }
+
+        // Update preferences (track over time)
+        if (hasEmoji !== (chatPrefs?.prefers_emoji ?? true)) {
+          updateData.prefers_emoji = hasEmoji;
+        }
+        if (hasLists !== (chatPrefs?.prefers_lists ?? false)) {
+          updateData.prefers_lists = hasLists;
+        }
+
+        // E. Execute update
+        await supabaseAdmin
+          .from('chat_preferences')
+          .update(updateData)
+          .eq('user_id', userId);
+
+        console.log(`[LEARNING] Updated preferences for user ${userId.substring(0, 8)}: topics=${detectedTopics.join(',') || 'none'}`);
+      } catch (err) {
+        console.error('[LEARNING] Error:', err);
+      }
+    };
+
+    // Run learning in background (don't await)
+    runLearningEngine().catch(console.error);
 
     // 10. Return response bubbles
     return NextResponse.json({ bubbles });

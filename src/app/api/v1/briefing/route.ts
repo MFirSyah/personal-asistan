@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const lastBriefingDate = metadata.last_briefing_date || null;
     const longTermMemory = metadata.long_term_memory || '';
     const personalityId = profile.selected_personality || 'witty_sidekick';
-    const assistantName = profile.assistant_name || 'Sobat AI';
+    const assistantName = profile.assistant_name || 'Personal Asistan';
     const userNickname = profile.user_nickname || 'Sobat';
 
     // 2. Check if briefing should show

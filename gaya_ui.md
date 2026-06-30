@@ -1,12 +1,12 @@
-# Panduan Desain & Estetika UI — Sobat AI
+# Panduan Desain & Estetika UI — Personal Asistan
 
-Dokumen ini mendeskripsikan sistem desain, pilihan estetika, skema warna, tipografi, serta animasi mikro yang digunakan pada aplikasi web **Sobat AI (Asisten Pribadi Kognitif)**. Sistem desain ini dibuat untuk memberikan kesan premium, modern, futuristik (*space-tech vibe*), dan interaktif (*alive*).
+Dokumen ini mendeskripsikan sistem desain, pilihan estetika, skema warna, tipografi, serta animasi mikro yang digunakan pada aplikasi web **Personal Asistan (Asisten Pribadi Kognitif)**. Sistem desain ini dibuat untuk memberikan kesan premium, modern, futuristik (*space-tech vibe*), dan interaktif (*alive*).
 
 ---
 
 ## 1. Filosofi & Konsep Desain
 
-Aplikasi Sobat AI mengadopsi estetika **Premium Dark Mode** yang dipadukan dengan **Glassmorphism** dan **Neon Glow Accents**. Konsep utama dari desain ini adalah:
+Aplikasi Personal Asistan mengadopsi estetika **Premium Dark Mode** yang dipadukan dengan **Glassmorphism** dan **Neon Glow Accents**. Konsep utama dari desain ini adalah:
 * **Fokus & Ketenangan (Kognitif):** Warna latar belakang gelap mengurangi ketegangan mata dan membantu pengguna tetap fokus pada metrik analitik penting.
 * **Kedalaman Visual (Visual Depth):** Efek blur kaca (*frosted glass*) menciptakan ilusi lapisan visual bertingkat yang rapi.
 * **Responsif & Hidup (Dynamic Feel):** Elemen interaktif merespons tindakan pengguna melalui hover glow, pergeseran halus, dan animasi berdenyut (*pulse*).
@@ -84,4 +84,4 @@ Semua transisi dalam aplikasi diatur menggunakan kurva akselerasi kustom untuk p
 * **Floating Hourglass:** Animasi naik turun perlahan (`translateY`) pada kunci kartu untuk menarik perhatian tanpa mengganggu fokus membaca dasbor.
 
 ---
-*Dokumentasi ini ditulis sebagai panduan acuan pengembangan gaya UI Sobat AI.*
+*Dokumentasi ini ditulis sebagai panduan acuan pengembangan gaya UI Personal Asistan.*

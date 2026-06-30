@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     id UUID REFERENCES auth.users NOT NULL PRIMARY KEY,
     fullname VARCHAR(255) NOT NULL,
     selected_personality VARCHAR(50) REFERENCES ai_personalities(id) DEFAULT 'witty_sidekick',
-    assistant_name VARCHAR(100) DEFAULT 'Sobat AI',
+    assistant_name VARCHAR(100) DEFAULT 'Personal Asistan',
     user_nickname VARCHAR(100) DEFAULT 'Sobat',
     dynamic_metadata JSONB DEFAULT '{}'::jsonb,  -- 🔧 kolom yang sebelumnya hilang
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
