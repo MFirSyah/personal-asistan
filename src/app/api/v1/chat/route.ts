@@ -401,7 +401,17 @@ export async function POST(req: NextRequest) {
 
         // Add jam (time) to dynamic_metadata if provided
         if (task.jam) {
-          record.dynamic_metadata = { jam: task.jam };
+          record.dynamic_metadata = { ...record.dynamic_metadata, jam: task.jam };
+        }
+
+        // Add waktu_mulai (start time) - NEW FIELD per user request
+        if (task.waktu_mulai) {
+          record.waktu_mulai = task.waktu_mulai;
+        }
+
+        // Add pengingat (reminder) - NEW FIELD per user request
+        if (task.pengingat) {
+          record.pengingat = task.pengingat;
         }
 
         return record;

@@ -41,9 +41,11 @@ export interface ExtractedData {
   }>;
   tasks: Array<{
     task_name: string;
-    due_date?: string; // ISO string
+    due_date?: string; // ISO string (Tenggat Waktu / Deadline)
     status: 'pending';
     jam?: string; // Format: HH:MM (24-hour format)
+    waktu_mulai?: string; // ISO string (Waktu Mulai / Start Time) - sesuai request AI chat
+    pengingat?: string; // ISO string (Pengingat / Reminder) - sesuai request AI chat
   }>;
   moods: Array<{
     mood: string;
@@ -77,6 +79,11 @@ Extraction Rules:
    - If date/time NOT mentioned, OMIT the field (don't include null/empty)
 2. "tasks": Extract task name, due date if specified, AND time if mentioned.
    - E.g., "tugas besok jam 9 pagi" -> task_name: "tugas", due_date: tomorrow ISO, jam: "09:00"
+   - E.g., "waktu mulai jam 2 siang, pengingat jam 1 siang" -> waktu_mulai: "14:00", pengingat: "13:00"
+   - "waktu_mulai": Kapan aktivitas dimulai (bukan deadline, tapi waktu mulai)
+   - "pengingat": Jam pengingat untuk mengingatkan aktivitas
+   - Jika user menyebutkan "waktu mulai", "mulai jam", "awalnya jam" -> extract ke waktu_mulai
+   - Jika user menyebutkan "pengingat", "ingatkan jam", "reminder jam" -> extract ke pengingat
 3. "moods": Extract user mood or feelings mentioned.
 4. "habits": Extract habits checked in or mentioned.
 
@@ -86,7 +93,7 @@ Return the response STRICTLY in this JSON format:
     { "amount": number, "type": "income" | "expense", "description": string, "transaction_date"?: "YYYY-MM-DD", "jam"?: "HH:MM" }
   ],
   "tasks": [
-    { "task_name": string, "due_date"?: string (ISO 8601), "status": "pending", "jam"?: "HH:MM" }
+    { "task_name": string, "due_date"?: string (ISO 8601), "status": "pending", "jam"?: "HH:MM", "waktu_mulai"?: "HH:MM", "pengingat"?: "HH:MM" }
   ],
   "moods": [
     { "mood": string, "description": string }

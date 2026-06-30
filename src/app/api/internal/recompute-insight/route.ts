@@ -12,8 +12,11 @@ const formatRupiah = (num: number) => {
 
 export async function POST(req: NextRequest) {
   // 1. Gateway key verification (since it is an internal webhook)
+  // Use NEXT_PUBLIC_GATEWAY_KEY to match frontend
   const gatewayKey = req.headers.get('x-jarvis-gateway-key');
-  if (gatewayKey !== process.env.GATEWAY_KEY) {
+  const validKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || process.env.GATEWAY_KEY || 'jarvis-super-secret-key-2026';
+  if (gatewayKey !== validKey) {
+    console.error('Gateway key mismatch:', { received: gatewayKey, expected: validKey });
     return NextResponse.json({ error: 'Unauthorized gateway access' }, { status: 401 });
   }
 

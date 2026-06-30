@@ -68,6 +68,21 @@ export default function DashboardPage() {
   const [editAssistantName, setEditAssistantName] = useState('');
   const [editSelectedPersonality, setEditSelectedPersonality] = useState('witty_sidekick');
 
+  // Demo Mode State - Reactive for proper card locking
+  const [isDemoMode, setIsDemoMode] = useState(false);
+
+  // Sorting & Filter States for Transactions Table
+  const [txSortField, setTxSortField] = useState<'created_at' | 'amount' | 'description'>('created_at');
+  const [txSortOrder, setTxSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [txFilterType, setTxFilterType] = useState<'all' | 'income' | 'expense'>('all');
+  const [txSearchQuery, setTxSearchQuery] = useState('');
+
+  // Sorting & Filter States for Todos Table
+  const [todoSortField, setTodoSortField] = useState<'created_at' | 'due_date' | 'task_name'>('created_at');
+  const [todoSortOrder, setTodoSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [todoFilterStatus, setTodoFilterStatus] = useState<'all' | 'pending' | 'completed' | 'cancelled'>('all');
+  const [todoSearchQuery, setTodoSearchQuery] = useState('');
+
   // Sync profile data to edit states
   useEffect(() => {
     if (profile) {
@@ -129,6 +144,18 @@ export default function DashboardPage() {
     setTodoTime(curTime);
   }, []);
 
+  // Helper function to parse hour from jam metadata
+  const parseHour = (item: any): number => {
+    const jam = item.dynamic_metadata?.jam || '';
+    if (!jam) return -1;
+    const parts = jam.split(':');
+    if (parts.length > 0) {
+      const hr = parseInt(parts[0], 10);
+      return isNaN(hr) ? -1 : hr;
+    }
+    return -1;
+  };
+
   // Local helper to recompute Kelas A insights in simulation mode
   const recomputeLocalInsights = (txs: any[], todos: any[]) => {
     // 1. Cash Flow
@@ -174,6 +201,73 @@ export default function DashboardPage() {
     const pendingCount = todos.filter(t => t.status === 'pending').length;
     const loadReply = `Beban Kerja Harian:\nHari ini ada ${pendingCount} tugas aktif yang harus diselesaikan. ${pendingCount > 3 ? 'Beban kerja cukup tinggi, istirahatlah yang cukup!' : 'Beban kerja ringan, luangkan waktu untuk bersantai.'}`;
 
+    // ========== NEW: Time-based calculations for additional insights ==========
+    // Group transactions by time periods (Pagi: 05-12, Siang: 12-17, Malam: 17-05)
+    let spendPagi = 0;
+    let spendSiang = 0;
+    let spendMalam = 0;
+    let totalExpensesForTime = 0;
+
+    txs.filter(t => t.type === 'expense').forEach(t => {
+      const hr = parseHour(t);
+      const amt = Number(t.amount || 0);
+      if (hr === -1) return;
+      totalExpensesForTime += amt;
+      if (hr >= 5 && hr < 12) spendPagi += amt;
+      else if (hr >= 12 && hr < 17) spendSiang += amt;
+      else spendMalam += amt;
+    });
+
+    const nightSpendingPercent = totalExpensesForTime > 0 ? Math.round((spendMalam / totalExpensesForTime) * 100) : 0;
+
+    // Group tasks by time periods
+    let tasksPagi = 0;
+    let tasksSiang = 0;
+    let tasksMalam = 0;
+
+    todos.forEach(todo => {
+      const hr = parseHour(todo);
+      if (hr === -1) return;
+      if (hr >= 5 && hr < 12) tasksPagi++;
+      else if (hr >= 12 && hr < 17) tasksSiang++;
+      else tasksMalam++;
+    });
+
+    const totalTasksWithTime = tasksPagi + tasksSiang + tasksMalam;
+
+    // 6. Runway Prediction
+    const savingsBalance = 15000000; // Asumsi saldo tabungan darurat
+    const monthlyExpense = totalExpense > 0 ? totalExpense : 500000;
+    const runwayMonths = monthlyExpense > 0 ? (savingsBalance / monthlyExpense) : 12;
+    const runwayReply = `Dengan saldo tabungan tabungan Rp ${savingsBalance.toLocaleString('id-ID')} dan pengeluaran rata-rata Rp ${monthlyExpense.toLocaleString('id-ID')}, dana darurat Anda bertahan selama ${runwayMonths.toFixed(1)} bulan jika terjadi kehilangan pendapatan. ${runwayMonths < 3 ? '⚠️ Peringatan: Dana darurat sangat tipis, segera tingkatkan tabungan!' : runwayMonths < 6 ? 'Dana darurat perlu ditingkatkan.' : 'Dana darurat Anda dalam kondisi aman.'}`;
+
+    // 7. Financial Risk Simulator
+    const financialRiskLevel = runwayMonths < 3 ? 'Tinggi' : runwayMonths < 6 ? 'Sedang' : 'Rendah';
+    const riskDesc = runwayMonths < 3 ? 'Anda memiliki risiko keuangan tinggi. Segera buat dana darurat minimal 6 bulan pengeluaran.' : runwayMonths < 6 ? 'Tingkat risiko keuangan sedang. Perbaiki kebiasaan belanja dan tingkatkan tabungan.' : 'Anda memiliki kebiasaan keuangan yang sehat dan risiko rendah.';
+    const riskSimReply = `Tingkat risiko keuangan Anda dinilai ${financialRiskLevel}. ${riskDesc}`;
+
+    // 8. Burnout Detection Engine
+    const burnoutLevel = pendingCount > 10 ? 'Tinggi' : pendingCount > 5 ? 'Sedang' : 'Rendah';
+    const burnoutPercent = Math.min(100, pendingCount * 8 + 10);
+    const burnoutReply = `Mesin Deteksi Kejenuhan menunjukkan tingkat stres Anda pada level ${burnoutLevel} (~${burnoutPercent}%). ${pendingCount > 10 ? '⚠️ Beban kerja sangat tinggi! Pertimbangkan untuk mendelegasikan atau menunda tugas yang tidak urgent.' : pendingCount > 5 ? 'Beban kerja cukup banyak. Pastikan untuk mengambil waktu istirahat yang cukup.' : 'Jadwal Anda terdistribusi dengan baik. Pertahankan keseimbangan antara kerja dan istirahat.'}`;
+
+    // 9. Mood vs Spending Correlation
+    const nightSpendingLabel = nightSpendingPercent > 40 ? 'Sangat Tinggi' : nightSpendingPercent > 25 ? 'Tinggi' : 'Normal';
+    const moodSpendReply = `Korelasi Mood & Pengeluaran: ${nightSpendingPercent}% dari pengeluaran Anda terjadi setelah jam 5 sore (${nightSpendingLabel}). ${nightSpendingPercent > 25 ? '⚠️ Terdeteksi kecenderungan stress-spending di malam hari. Pertimbangkan untuk menunda keputusan belanja hingga esok hari.' : 'Pola belanja Anda relatif seimbang sepanjang hari.'}`;
+
+    // 10. Mood vs Productivity Correlation
+    const morningProductivity = totalTasksWithTime > 0 ? Math.round((tasksPagi / totalTasksWithTime) * 100) : 33;
+    const afternoonProductivity = Math.max(20, 100 - morningProductivity - 15);
+    const eveningProductivity = Math.max(10, 100 - morningProductivity - afternoonProductivity);
+    const peakTime = tasksPagi >= tasksSiang && tasksPagi >= tasksMalam ? 'pagi hari' : tasksMalam > tasksPagi ? 'malam hari' : 'siang hari';
+    const moodProdReply = `Korelasi Mood & Produktivitas: Produktivitas Anda di pagi hari ~${morningProductivity}%, siang ~${afternoonProductivity}%, malam ~${eveningProductivity}%. ${tasksPagi >= tasksSiang && tasksPagi >= tasksMalam ? 'Anda bekerja sangat efektif di pagi hari - jadwalkan tugas berat di jam-jam ini.' : tasksMalam >= tasksPagi ? 'Anda lebih produktif dan kreatif di malam hari. Manfaatkan waktu ini untuk tugas yang membutuhkan fokus tinggi.' : 'Produktivitas Anda merata sepanjang hari.'}`;
+
+    // 11. Worth-It Score Audit
+    const worthItScore = totalIncome > 0 ? Math.max(0, Math.min(100, Math.round(((totalIncome - totalExpense) / totalIncome) * 100))) : 50;
+    const worthItGrade = worthItScore >= 80 ? 'A+' : worthItScore >= 60 ? 'A' : worthItScore >= 40 ? 'B' : worthItScore >= 20 ? 'C' : 'D';
+    const worthItDesc = worthItScore >= 80 ? 'Pengeluaran Anda sangat efisien dan bernilai!' : worthItScore >= 60 ? 'Kebiasaan keuangan Anda sehat.' : worthItScore >= 40 ? 'Perlu evaluasi pengeluaran yang lebih selektif.' : worthItScore >= 20 ? 'Tingkat tabungan sangat rendah. Perlu perubahan kebiasaan keuangan signifikan.' : 'Pengeluaran melebihi pemasukan. Segera buat anggaran ketat!';
+    const worthItReply = `Worth-It Audit: ${worthItScore}% dari pengeluaran Anda tergolong investasi bernilai tinggi atau kebutuhan pokok. Grade: ${worthItGrade}. ${worthItDesc}`;
+
     setInsights(prev => ({
       ...prev,
       cash_flow_analysis: {
@@ -199,6 +293,37 @@ export default function DashboardPage() {
       daily_activity_load: {
         insight_type: 'daily_activity_load',
         cached_reply: loadReply
+      },
+      // NEW: Additional insights
+      runway_prediction: {
+        insight_type: 'runway_prediction',
+        cached_reply: runwayReply,
+        sources_metadata: { savingsBalance, monthlyExpense, runwayMonths }
+      },
+      financial_risk_simulator: {
+        insight_type: 'financial_risk_simulator',
+        cached_reply: riskSimReply,
+        sources_metadata: { riskLevel: financialRiskLevel }
+      },
+      burnout_detection_engine: {
+        insight_type: 'burnout_detection_engine',
+        cached_reply: burnoutReply,
+        sources_metadata: { burnoutLevel, burnoutPercent, pendingTasks: pendingCount }
+      },
+      mood_vs_spending: {
+        insight_type: 'mood_vs_spending',
+        cached_reply: moodSpendReply,
+        sources_metadata: { nightSpendingPercent, spendPagi, spendSiang, spendMalam }
+      },
+      mood_vs_productivity: {
+        insight_type: 'mood_vs_productivity',
+        cached_reply: moodProdReply,
+        sources_metadata: { tasksPagi, tasksSiang, tasksMalam, totalTasksWithTime }
+      },
+      trend_worth_it_score: {
+        insight_type: 'trend_worth_it_score',
+        cached_reply: worthItReply,
+        sources_metadata: { worthItScore, worthItGrade, netSavings }
       }
     }));
   };
@@ -329,6 +454,9 @@ export default function DashboardPage() {
         map[item.insight_type] = item;
       });
       setInsights(map);
+    } else {
+      // If no cache, compute local insights immediately
+      // Will be recomputed by server via trigger, but show data now
     }
 
     // Fetch Raw Transactions for Dynamic Form fields scanning
@@ -348,15 +476,38 @@ export default function DashboardPage() {
       .order('created_at', { ascending: false })
       .limit(50);
     if (todoData) setRawTodos(todoData);
-  };
+
+    // After fetching transactions and todos, compute local insights if cache was empty
+    const txData = mtData || [];
+    const todoDataList = todoData || [];
+    if (txData.length > 0 || todoDataList.length > 0) {
+      recomputeLocalInsights(txData, todoDataList);
+    }
+
+    // Trigger server recompute in background (this populates the cache)
+    try {
+      const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
+      fetch('/api/internal/recompute-insight', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-jarvis-gateway-key': gatewayKey,
+        },
+        body: JSON.stringify({ record: { user_id: user.id } }),
+      });
+    } catch (recomputeErr) {
+      console.warn('Background insight recompute failed:', recomputeErr);
+    }
 
   useEffect(() => {
     // Check if we are in demo mode
     const isDemoModeToken = typeof window !== 'undefined' && localStorage.getItem('is_demo_mode') === 'true';
     if (isDemoModeToken) {
+      setIsDemoMode(true);
       loadMockData();
       return;
     }
+    setIsDemoMode(false);
 
     // Check if accessing from mobile app
     if (typeof window !== 'undefined') {
@@ -369,6 +520,7 @@ export default function DashboardPage() {
 
     if (!client) {
       console.warn('Supabase credentials not found. Defaulting to simulation mode.');
+      setIsDemoMode(true);
       loadMockData();
       return;
     }
@@ -376,6 +528,7 @@ export default function DashboardPage() {
     // Safely check active session from client
     client.auth.getSession().then(async ({ data: { session } }: any) => {
       if (session) {
+        setIsDemoMode(false); // Real authenticated user
         localStorage.setItem('access_token', session.access_token);
         localStorage.setItem('refresh_token', session.refresh_token);
         setIsAuthenticated(true);
@@ -469,7 +622,7 @@ export default function DashboardPage() {
 
   const handleCreatePlan = async (insightId: string, name: string, actionSteps: string[], targetDate: string) => {
     if (plannedInsightIds.includes(insightId)) return;
-    
+
     const newPlan = {
       id: String(Date.now()),
       name,
@@ -497,6 +650,34 @@ export default function DashboardPage() {
         }
       } catch (err) {
         console.error('Failed to save future plan to Supabase:', err);
+      }
+    }
+  };
+
+  const handleDeletePlan = async (planId: string) => {
+    const updatedPlans = futurePlans.filter(p => p.id !== planId);
+    setFuturePlans(updatedPlans);
+    setPlannedInsightIds(prev => prev.filter(id => {
+      // Also unmark this insight as planned
+      const plan = futurePlans.find(p => p.id === planId);
+      return id !== planId && id !== `insight-${plan?.name?.toLowerCase().replace(/\s+/g, '-')}`;
+    }));
+
+    if (supabase) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const updatedMetadata = {
+            ...(profile.dynamic_metadata || {}),
+            future_plans: updatedPlans
+          };
+          await supabase
+            .from('user_profiles')
+            .update({ dynamic_metadata: updatedMetadata })
+            .eq('id', user.id);
+        }
+      } catch (err) {
+        console.error('Failed to delete future plan from Supabase:', err);
       }
     }
   };
@@ -703,85 +884,237 @@ export default function DashboardPage() {
     }
   };
 
+  // Dynamic Special Insights - analyzes actual user data
   const getSpecialInsights = () => {
-    const coffeeExpense = rawTransactions
-      .filter(t => t.type === 'expense' && t.description.toLowerCase().includes('kopi'))
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
-    
-    const pendingCount = rawTodos.filter(t => t.status === 'pending').length;
+    const insights: Array<{
+      id: string;
+      title: string;
+      tag: string;
+      isInternet: boolean;
+      description: string;
+      planName: string;
+      actionSteps: string[];
+      targetDate: string;
+    }> = [];
 
-    return [
-      {
-        id: 'insight-coffee-inflation',
-        title: 'Dampak Kenaikan Harga Pangan & Kopi Global (El Niño 2026)',
-        tag: 'Keuangan + Pangan',
-        isInternet: true,
-        description: `Harga biji kopi Robusta/Arabika di Indonesia melonjak signifikan akibat anomali cuaca El Niño (penurunan panen 15-20%). Pengeluaran kopi Anda tercatat Rp ${coffeeExpense > 0 ? coffeeExpense.toLocaleString('id-ID') : '750.000'}. Dibandingkan dengan tugas '${rawTodos[0]?.task_name || 'Laporan Pajak'}' yang masih pending, menyeduh kopi liberika/robusta lokal sendiri di rumah bisa menghemat pengeluaran harian Anda secara signifikan.`,
-        planName: 'Batas Anggaran Kopi & Jajan Harian',
+    // Calculate metrics from raw data
+    const totalIncome = rawTransactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const totalExpense = rawTransactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const netSavings = totalIncome - totalExpense;
+    const savingsRate = totalIncome > 0 ? ((netSavings / totalIncome) * 100) : 0;
+
+    const pendingTodos = rawTodos.filter(t => t.status === 'pending');
+    const completedTodos = rawTodos.filter(t => t.status === 'completed');
+    const consistencyRate = rawTodos.length > 0
+      ? Math.round((completedTodos.length / rawTodos.length) * 100)
+      : 100;
+
+    // Calculate time-based metrics
+    const parseHour = (item: any): number => {
+      const jam = item.dynamic_metadata?.jam || '';
+      if (!jam) return -1;
+      const parts = jam.split(':');
+      if (parts.length > 0) {
+        const hr = parseInt(parts[0], 10);
+        return isNaN(hr) ? -1 : hr;
+      }
+      return -1;
+    };
+
+    let spendMalam = 0;
+    let totalExpenseForTime = 0;
+    rawTransactions.filter(t => t.type === 'expense').forEach(t => {
+      const hr = parseHour(t);
+      const amt = Number(t.amount || 0);
+      if (hr !== -1 && hr >= 17) {
+        spendMalam += amt;
+        totalExpenseForTime += amt;
+      } else if (hr !== -1) {
+        totalExpenseForTime += amt;
+      }
+    });
+    const nightSpendingPercent = totalExpenseForTime > 0
+      ? Math.round((spendMalam / totalExpenseForTime) * 100)
+      : 0;
+
+    // Find largest expense
+    const sortedExpenses = rawTransactions
+      .filter(t => t.type === 'expense')
+      .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+    const largestExpense = sortedExpenses[0];
+
+    // Find highest category of spending
+    const categorySpending: Record<string, number> = {};
+    rawTransactions.filter(t => t.type === 'expense').forEach(t => {
+      const kat = t.dynamic_metadata?.kategori || 'Lainnya';
+      categorySpending[kat] = (categorySpending[kat] || 0) + Number(t.amount || 0);
+    });
+    const topCategory = Object.entries(categorySpending)
+      .sort((a, b) => b[1] - a[1])[0];
+
+    // 1. Largest Expense Analysis (only if we have transactions)
+    if (largestExpense) {
+      const isLargeExpense = Number(largestExpense.amount) > totalExpense * 0.3;
+      insights.push({
+        id: 'insight-largest-expense',
+        title: `Pengeluaran Terbesar: ${largestExpense.description}`,
+        tag: 'Keuangan',
+        isInternet: false,
+        description: `Pengeluaran tertinggi Anda adalah "${largestExpense.description}" sebesar Rp ${Number(largestExpense.amount).toLocaleString('id-ID')} pada ${largestExpense.transaction_date || 'tanggal tidak diketahui'}. ${isLargeExpense ? `⚠️ Pengeluaran ini составляет ${Math.round((Number(largestExpense.amount) / totalExpense) * 100)}% dari total pengeluaran! Pertimbangkan untuk mengurangi pengeluaran ini.` : 'Pengeluaran ini masih dalam batas wajar.'}`,
+        planName: `Evaluasi: ${largestExpense.description}`,
         actionSteps: [
-          'Batasi beli kopi luar maks 2x seminggu',
-          'Seduh kopi robusta/arabika lokal sendiri di rumah/kantor',
-          `Selesaikan tugas '${rawTodos[0]?.task_name || 'Laporan Pajak'}' sambil menyeduh kopi mandiri`
+          `Analisis apakah "${largestExpense.description}" benar-benar kebutuhan bulan ini`,
+          isLargeExpense ? 'Cari alternatif yang lebih hemat' : 'Pertahankan pengeluaran ini',
+          'Track perkembangan pengeluaran ini minggu depan'
         ],
-        targetDate: '1 minggu ke depan'
-      },
-      {
-        id: 'insight-freelance-demand',
-        title: 'Tren Pasar Kerja Freelance Developer Indonesia 2026',
-        tag: 'Karir + Kerja',
-        isInternet: true,
-        description: `Data internet menunjukkan lonjakan permintaan freelance developer (Web & Mobile) sebesar 15% di pertengahan 2026. Anda memiliki ${pendingCount} tugas aktif tertunda termasuk '${rawTodos[1]?.task_name || 'Revisi Pitch Deck'}'. Menyelesaikan tugas ini akan memperkuat portofolio digital Anda untuk memenangkan proyek luar negeri bernilai tinggi.`,
-        planName: 'Selesaikan Portofolio Freelance Developer',
-        actionSteps: [
-          `Selesaikan tugas '${rawTodos[1]?.task_name || 'Revisi Pitch Deck'}' dalam 3 hari`,
-          'Publikasikan hasil deploy web app ke platform portofolio digital',
-          'Kirim lamaran freelance ke 3 prospek klien teknologi'
-        ],
-        targetDate: '3 hari'
-      },
-      {
-        id: 'insight-sub-audit',
-        title: 'Audit Langganan Digital & Kenaikan Tarif SaaS',
+        targetDate: '1 minggu'
+      });
+    }
+
+    // 2. Top Spending Category
+    if (topCategory) {
+      const [category, amount] = topCategory;
+      if (category !== 'Lainnya' && amount > 0) {
+        insights.push({
+          id: 'insight-top-category',
+          title: `Kategori Pengeluaran Terbesar: ${category}`,
+          tag: 'Anti-Boros',
+          isInternet: false,
+          description: `Sebagian besar pengeluaran Anda habis untuk "${category}" yaitu Rp ${amount.toLocaleString('id-ID')} (${Math.round((amount / totalExpense) * 100)}% dari total). ${Number(amount) > totalExpense * 0.4 ? 'Ini tergolong sangat tinggi. Sebaiknya buat anggaran khusus untuk kategori ini.' : 'Kategorinya masih wajar.'}`,
+          planName: `Optimasi Pengeluaran ${category}`,
+          actionSteps: [
+            `Buat batas anggaran bulanan untuk ${category}`,
+            'Track setiap pengeluaran di kategori ini',
+            `Evaluasi apakah ada pengeluaran ${category} yang bisa dikurangi`
+          ],
+          targetDate: 'Bulan ini'
+        });
+      }
+    }
+
+    // 3. Night Spending Warning
+    if (nightSpendingPercent > 25 && rawTransactions.length > 0) {
+      insights.push({
+        id: 'insight-night-spending',
+        title: '⚠️ Peringatan: Belanja Malam Tinggi',
         tag: 'Anti-Boros',
         isInternet: true,
-        description: `Banyak platform digital melakukan penyesuaian tarif PPN 12% di Indonesia pada tahun 2026. Anda memiliki pengeluaran langganan (seperti Netflix, Spotify) sebesar Rp 350.000. Sementara itu, tugas pembelajaran seperti '${rawTodos[2]?.task_name || 'Belajar Next.js'}' harus ditargetkan selesai agar biaya langganan penunjang produktivitas Anda tidak menjadi pengeluaran fomo yang sia-sia.`,
-        planName: 'Audit & Konsolidasi Langganan Layanan',
+        description: `${nightSpendingPercent}% dari pengeluaran Anda terjadi setelah jam 5 sore. Penelitian menunjukkan belanja malam sering dikaitkan dengan keputusan impulsif dan emosi. ${nightSpendingPercent > 40 ? '⚠️ Pola ini sangat mengkhawatirkan!' : ''}`,
+        planName: 'Kurangi Belanja Malam',
         actionSteps: [
-          'List seluruh pengeluaran langganan SaaS/Hiburan aktif',
-          'Cancel langganan yang tidak diakses lebih dari 14 hari',
-          'Fokuskan waktu luang untuk menyelesaikan modul belajar aktif'
-        ],
-        targetDate: '3 hari'
-      },
-      {
-        id: 'insight-morning-focus',
-        title: 'Korelasi Fokus Kerja Pagi Hari & Efisiensi Energi',
-        tag: 'Produktivitas',
-        isInternet: false,
-        description: `Analisis emosi harian Anda menunjukkan efisiensi kerja pagi hari mencapai 90%, namun drop hingga 15% jika mood sore Anda kelelahan. Tren kerja modern menyarankan 'Eat the Frog' di pagi hari. Jadwalkan tugas utama seperti '${rawTodos[0]?.task_name || 'Selesaikan Laporan Pajak'}' sebelum jam 12 siang.`,
-        planName: 'Blok Waktu Fokus Pagi Hari',
-        actionSteps: [
-          'Matikan notifikasi HP dari jam 09:00 - 11:30',
-          'Selesaikan 1 tugas berat yang berada di prioritas teratas',
-          'Evaluasi emosi kerja setelah sesi pagi selesai'
-        ],
-        targetDate: 'Setiap Hari'
-      },
-      {
-        id: 'insight-stress-spending',
-        title: 'Mitigasi Stres Belanja (Stress-Spending di Jam Malam)',
-        tag: 'Life Balance',
-        isInternet: true,
-        description: `E-commerce di Indonesia semakin mempermudah checkout instan di malam hari. Grafik kognitif mendeteksi kenaikan belanja retail Anda sebesar 45% saat chat log Anda terdeteksi lelah/marah di malam hari. Terapkan aturan 'tunda 24 jam' untuk menekan impulsivitas belanja ini.`,
-        planName: 'Detox Belanja Impulsif Malam Hari',
-        actionSteps: [
-          'Hapus pintasan aplikasi e-commerce dari layar utama setelah jam 20:00',
-          'Tunda checkout barang non-esensial di keranjang belanja selama 24 jam',
-          'Ganti kebiasaan scroll belanja dengan membaca buku atau meditasi'
+          'Tunda keputusan belanja non-esensial sampai keesokan harinya',
+          'Hapus pintasan e-commerce dari layar utama setelah jam 8 malam',
+          nightSpendingPercent > 40 ? 'Pertimbangkan untuk uninstall aplikasi belanja sementara' : 'Ganti kebiasaan scroll dengan membaca buku atau meditasi'
         ],
         targetDate: '2 minggu'
+      });
+    }
+
+    // 4. Savings Rate Analysis
+    if (savingsRate < 20 && totalIncome > 0) {
+      const targetSavings = Math.round(totalIncome * 0.2);
+      const currentSavings = Math.max(0, netSavings);
+      insights.push({
+        id: 'insight-savings-rate',
+        title: 'Tingkat Tabungan Perlu Ditingkatkan',
+        tag: 'Keuangan',
+        isInternet: false,
+        description: `Tingkat tabungan Anda bulan ini hanya ${savingsRate.toFixed(1)}%. Idealnya minimal 20% dari penghasilan. Anda perlu menghemat Rp ${Math.max(0, (targetSavings - currentSavings)).toLocaleString()} lagi untuk mencapai target.`,
+        planName: 'Tingkatkan Tabungan ke 20%',
+        actionSteps: [
+          'Identifikasi 3 pengeluaran terbesar yang bisa dikurangi',
+          'Set up auto-transfer ke tabungan saat penghasilan masuk',
+          'Track progress tabungan setiap minggu'
+        ],
+        targetDate: 'Bulan ini'
+      });
+    } else if (savingsRate >= 20 && totalIncome > 0) {
+      insights.push({
+        id: 'insight-good-savings',
+        title: '🎉 Kebiasaan Tabungan yang Baik!',
+        tag: 'Keuangan',
+        isInternet: false,
+        description: `Tingkat tabungan Anda ${savingsRate.toFixed(1)}% - di atas target 20%! Saldo bersih Rp ${netSavings.toLocaleString('id-ID')}. Pertahankan kebiasaan ini dan pertimbangkan untuk investasi.`,
+        planName: 'Pertahankan & Tingkatkan Tabungan',
+        actionSteps: [
+          'Pertahankan tingkat tabungan minimal 20%',
+          'Pertimbangkan reksa dana atau investasi ringan',
+          'Buat dana darurat 6 bulan pengeluaran'
+        ],
+        targetDate: '3 bulan'
+      });
+    }
+
+    // 5. Task Priority Analysis
+    if (pendingTodos.length > 0) {
+      const urgentTodo = pendingTodos[0];
+      const overdueTodos = pendingTodos.filter(t => {
+        if (!t.due_date) return false;
+        return new Date(t.due_date) < new Date();
+      });
+
+      insights.push({
+        id: 'insight-urgent-task',
+        title: `Prioritas Tertinggi: ${urgentTodo.task_name}`,
+        tag: 'Produktivitas',
+        isInternet: false,
+        description: `Anda memiliki ${pendingTodos.length} tugas aktif. Prioritas utama: "${urgentTodo.task_name}"${urgentTodo.due_date ? ` (tenggat: ${new Date(urgentTodo.due_date).toLocaleDateString('id-ID')})` : ' (tanpa tenggat)'}. ${overdueTodos.length > 0 ? `⚠️ Anda memiliki ${overdueTodos.length} tugas terlambat!` : pendingTodos.length > 5 ? 'Beban tugas cukup banyak. Selesaikan satu per satu.' : 'Beban tugas masih manageable.'}`,
+        planName: 'Fokus Tugas Prioritas',
+        actionSteps: [
+          `Prioritaskan "${urgentTodo.task_name}" untuk diselesaikan pertama`,
+          'Breakdown tugas menjadi step-step kecil',
+          'Set timer 25 menit (Pomodoro) untuk fokus'
+        ],
+        targetDate: urgentTodo.due_date || '3 hari'
+      });
+    }
+
+    // 6. Consistency Challenge
+    if (consistencyRate < 70 && rawTodos.length >= 3) {
+      insights.push({
+        id: 'insight-consistency',
+        title: 'Tantangan Konsistensi Penyelesaian Tugas',
+        tag: 'Produktivitas',
+        isInternet: false,
+        description: `Skor konsistensi Anda ${consistencyRate}%. Dari ${rawTodos.length} tugas, hanya ${completedTodos.length} yang terselesaikan. ${consistencyRate < 50 ? '⚠️ Konsistensi sangat rendah.' : ''}`,
+        planName: 'Tingkatkan Konsistensi 70%+',
+        actionSteps: [
+          'Mulai dengan tugas terkecil untuk membangun momentum',
+          'Gunakan teknik Pomodoro: 25 menit fokus, 5 menit istirahat',
+          'Celebrate setiap keberhasilan menyelesaikan tugas'
+        ],
+        targetDate: '1 bulan'
+      });
+    }
+
+    // 7. Overflow Insights (only if we have enough data)
+    if (rawTransactions.length >= 10 && sortedExpenses.length >= 3) {
+      const avgExpense = totalExpense / sortedExpenses.length;
+      const highExpenses = sortedExpenses.filter(e => Number(e.amount) > avgExpense);
+
+      if (highExpenses.length > 0) {
+        insights.push({
+          id: 'insight-expense-pattern',
+          title: 'Pola Pengeluaran Tidak Merata',
+          tag: 'Anti-Boros',
+          isInternet: false,
+          description: `Dari ${rawTransactions.filter(t => t.type === 'expense').length} transaksi pengeluaran, ${highExpenses.length} di antaranya tergolong besar (di atas rata-rata Rp ${Math.round(avgExpense).toLocaleString()}). Ini mengindikasikan pola pengeluaran tidak merata.`,
+          planName: 'Ratakan Pola Pengeluaran',
+          actionSteps: [
+            'Buat anggaran bulanan per kategori',
+            'Catat setiap transaksi untuk awareness',
+            'Kurangi pengeluaran besar yang berulang'
+          ],
+          targetDate: 'Bulan ini'
+        });
       }
-    ];
+    }
+
+    return insights.slice(0, 5); // Max 5 insights
   };
 
   const handleTriggerPrint = () => {
@@ -1111,14 +1444,26 @@ export default function DashboardPage() {
     );
   }
 
-  // Extracts data helper
-  const totalIncome = insights.cash_flow_analysis?.sources_metadata?.totalIncome || 0;
-  const totalExpense = insights.cash_flow_analysis?.sources_metadata?.totalExpense || 0;
+  // Extracts data helper - COMPUTE from rawTransactions for immediate display
+  const computedIncome = rawTransactions
+    .filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const computedExpense = rawTransactions
+    .filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const totalIncome = insights.cash_flow_analysis?.sources_metadata?.totalIncome || computedIncome;
+  const totalExpense = insights.cash_flow_analysis?.sources_metadata?.totalExpense || computedExpense;
   const netSavings = totalIncome - totalExpense;
   const progressRatio = totalIncome > 0 ? Math.min((totalExpense / totalIncome) * 100, 100) : 0;
-  const consistencyScore = insights.consistency_graph?.sources_metadata?.consistencyRate || 0;
 
-  const isDemo = !supabase || (typeof window !== 'undefined' && localStorage.getItem('is_demo_mode') === 'true') || profile.fullname?.includes('(Demo)') || profile.user_nickname?.includes('Demo');
+  // Compute consistency score from rawTodos
+  const completedTodosCount = rawTodos.filter(t => t.status === 'completed').length;
+  const totalTodosCount = rawTodos.length;
+  const computedConsistency = totalTodosCount > 0 ? Math.round((completedTodosCount / totalTodosCount) * 100) : 0;
+  const consistencyScore = insights.consistency_graph?.sources_metadata?.consistencyRate || computedConsistency;
+
+  // isDemo - reactive state-based version
+  const isDemo = isDemoMode || !supabase;
 
   const getUsageDays = () => {
     if (!profile || !profile.created_at) return 1;
@@ -1188,8 +1533,12 @@ export default function DashboardPage() {
   const baseRunway = totalExpense > 0 ? (15000000 / totalExpense) : 3;
   const simulatedRunway = simulatedExpense > 0 ? (15000000 / simulatedExpense) : 3;
 
-  // Time-based Analysis Helpers
-  const parseHour = (item: any): number => {
+  // Extract time-based data from insights OR compute from raw data
+  const moodSpendingData = insights.mood_vs_spending?.sources_metadata || {};
+  const moodProductivityData = insights.mood_vs_productivity?.sources_metadata || {};
+
+  // Compute time-based spending from rawTransactions if not in insights
+  const parseHourFromItem = (item: any): number => {
     const jam = item.dynamic_metadata?.jam || '';
     if (!jam) return -1;
     const parts = jam.split(':');
@@ -1200,39 +1549,39 @@ export default function DashboardPage() {
     return -1;
   };
 
-  // Group transactions by time periods
-  let spendPagi = 0;   // 05:00 - 12:00
-  let spendSiang = 0;  // 12:00 - 17:00
-  let spendMalam = 0;  // 17:00 - 05:00
-  let totalExpensesForTime = 0;
-
+  // Calculate spending by time period from raw data
+  let rawSpendPagi = 0, rawSpendSiang = 0, rawSpendMalam = 0, rawTotalExpenseForTime = 0;
   rawTransactions.filter(t => t.type === 'expense').forEach(t => {
-    const hr = parseHour(t);
+    const hr = parseHourFromItem(t);
     const amt = Number(t.amount || 0);
-    if (hr === -1) return;
-    totalExpensesForTime += amt;
-    if (hr >= 5 && hr < 12) spendPagi += amt;
-    else if (hr >= 12 && hr < 17) spendSiang += amt;
-    else spendMalam += amt;
+    if (hr !== -1) {
+      rawTotalExpenseForTime += amt;
+      if (hr >= 5 && hr < 12) rawSpendPagi += amt;
+      else if (hr >= 12 && hr < 17) rawSpendSiang += amt;
+      else rawSpendMalam += amt;
+    }
   });
 
-  const nightSpendingPercent = totalExpensesForTime > 0 ? Math.round((spendMalam / totalExpensesForTime) * 100) : 0;
-
-  // Group tasks by time periods
-  let tasksPagi = 0;
-  let tasksSiang = 0;
-  let tasksMalam = 0;
-
-  rawTodos.forEach(todo => {
-    const hr = parseHour(todo);
-    if (hr === -1) return;
-    if (hr >= 5 && hr < 12) tasksPagi++;
-    else if (hr >= 12 && hr < 17) tasksSiang++;
-    else tasksMalam++;
+  // Calculate tasks by time period from raw data
+  let rawTasksPagi = 0, rawTasksSiang = 0, rawTasksMalam = 0, rawTotalTasksWithTime = 0;
+  rawTodos.forEach(t => {
+    const hr = parseHourFromItem(t);
+    if (hr !== -1) {
+      rawTotalTasksWithTime += 1;
+      if (hr >= 5 && hr < 12) rawTasksPagi += 1;
+      else if (hr >= 12 && hr < 17) rawTasksSiang += 1;
+      else rawTasksMalam += 1;
+    }
   });
 
-  const totalTasksWithTime = tasksPagi + tasksSiang + tasksMalam;
-  
+  // Use computed values if insights don't have them
+  const nightSpendingPercent = moodSpendingData.nightSpendingPercent || (rawTotalExpenseForTime > 0 ? Math.round((rawSpendMalam / rawTotalExpenseForTime) * 100) : 0);
+  const tasksPagi = moodProductivityData.tasksPagi || rawTasksPagi;
+  const tasksSiang = moodProductivityData.tasksSiang || rawTasksSiang;
+  const tasksMalam = moodProductivityData.tasksMalam || rawTasksMalam;
+  const totalTasksWithTime = moodProductivityData.totalTasksWithTime || rawTotalTasksWithTime;
+
+  // Chronotype calculation based on task distribution
   let chronotypeName = 'Steady Bear (Moderat)';
   let chronotypeRec = 'Aktivitas kognitif Anda merata sepanjang hari. Pertahankan ritme kerja yang seimbang.';
   if (totalTasksWithTime > 0) {
@@ -1604,16 +1953,16 @@ export default function DashboardPage() {
                   </p>
                   <div className="visualizer-container">
                     <div className="bar-column">
-                      <div className="bar-fill" style={{ height: '75%', background: 'var(--color-danger)' }} data-value="Stress Belanja: Rp 1.200.000"></div>
-                      <span className="bar-label">Stress</span>
+                      <div className="bar-fill" style={{ height: `${moodSpendingData.spendPagi ? Math.min(100, (moodSpendingData.spendPagi / (moodSpendingData.spendPagi + moodSpendingData.spendSiang + moodSpendingData.spendMalam || 1)) * 100) : 33}%`, background: 'var(--color-success)' }} data-value={`Pagi: Rp ${(moodSpendingData.spendPagi || 0).toLocaleString()}`}></div>
+                      <span className="bar-label">Pagi</span>
                     </div>
                     <div className="bar-column">
-                      <div className="bar-fill" style={{ height: '35%', background: 'var(--color-success)' }} data-value="Tenang Belanja: Rp 500.000"></div>
-                      <span className="bar-label">Tenang</span>
+                      <div className="bar-fill" style={{ height: `${moodSpendingData.spendSiang ? Math.min(100, (moodSpendingData.spendSiang / (moodSpendingData.spendPagi + moodSpendingData.spendSiang + moodSpendingData.spendMalam || 1)) * 100) : 33}%`, background: 'var(--color-warning)' }} data-value={`Siang: Rp ${(moodSpendingData.spendSiang || 0).toLocaleString()}`}></div>
+                      <span className="bar-label">Siang</span>
                     </div>
                     <div className="bar-column">
-                      <div className="bar-fill" style={{ height: '50%', background: 'var(--color-primary)' }} data-value="Senang Belanja: Rp 800.000"></div>
-                      <span className="bar-label">Senang</span>
+                      <div className="bar-fill" style={{ height: `${nightSpendingPercent}%`, background: nightSpendingPercent > 30 ? 'var(--color-danger)' : 'var(--color-primary)' }} data-value={`Malam: ${nightSpendingPercent}%`}></div>
+                      <span className="bar-label">Malam</span>
                     </div>
                   </div>
                 </div>
@@ -1630,15 +1979,15 @@ export default function DashboardPage() {
                   </p>
                   <div className="visualizer-container">
                     <div className="bar-column">
-                      <div className="bar-fill" style={{ height: '90%', background: 'var(--color-success)' }} data-value="Fokus Pagi: 90%"></div>
+                      <div className="bar-fill" style={{ height: `${totalTasksWithTime > 0 ? (tasksPagi / totalTasksWithTime) * 100 : 33}%`, background: 'var(--color-success)' }} data-value={`Pagi: ${tasksPagi} tugas`}></div>
                       <span className="bar-label">Pagi</span>
                     </div>
                     <div className="bar-column">
-                      <div className="bar-fill" style={{ height: '60%', background: 'var(--color-warning)' }} data-value="Fokus Siang: 60%"></div>
+                      <div className="bar-fill" style={{ height: `${totalTasksWithTime > 0 ? (tasksSiang / totalTasksWithTime) * 100 : 33}%`, background: 'var(--color-warning)' }} data-value={`Siang: ${tasksSiang} tugas`}></div>
                       <span className="bar-label">Siang</span>
                     </div>
                     <div className="bar-column">
-                      <div className="bar-fill" style={{ height: '15%', background: 'var(--color-danger)' }} data-value="Fokus Malam: 15%"></div>
+                      <div className="bar-fill" style={{ height: `${totalTasksWithTime > 0 ? (tasksMalam / totalTasksWithTime) * 100 : 34}%`, background: 'var(--color-purple)' }} data-value={`Malam: ${tasksMalam} tugas`}></div>
                       <span className="bar-label">Malam</span>
                     </div>
                   </div>
@@ -1655,12 +2004,12 @@ export default function DashboardPage() {
                     {insights.trend_worth_it_score?.cached_reply || 'Asisten Anda sedang menilai indeks kepuasan dan nilai guna dari pengeluaran Anda...'}
                   </p>
                   <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
-                    <div style={{ fontSize: '3rem', fontWeight: 800, fontFamily: 'var(--font-title)', color: 'var(--color-success)', textShadow: '0 0 20px rgba(16,185,129,0.3)' }}>
-                      A+
+                    <div style={{ fontSize: '3rem', fontWeight: 800, fontFamily: 'var(--font-title)', color: insights.trend_worth_it_score?.sources_metadata?.worthItScore >= 60 ? 'var(--color-success)' : insights.trend_worth_it_score?.sources_metadata?.worthItScore >= 40 ? 'var(--color-warning)' : 'var(--color-danger)', textShadow: '0 0 20px rgba(16,185,129,0.3)' }}>
+                      {insights.trend_worth_it_score?.sources_metadata?.worthItGrade || 'N/A'}
                     </div>
                   </div>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                    Skor Kebermanfaatan Belanja Mingguan
+                    Skor Kebermanfaatan Belanja: {insights.trend_worth_it_score?.sources_metadata?.worthItScore || 0}%
                   </p>
                 </div>
 
@@ -1793,9 +2142,7 @@ export default function DashboardPage() {
                       </ol>
                       <div className="plan-target">
                         <span>Target: <strong>{plan.targetDate}</strong></span>
-                        <span style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--color-danger)' }} onClick={() => {
-                          setFuturePlans(prev => prev.filter(p => p.id !== plan.id));
-                        }}>Hapus</span>
+                        <span style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--color-danger)' }} onClick={() => handleDeletePlan(plan.id)}>Hapus</span>
                       </div>
                     </div>
                   ))}
@@ -2234,36 +2581,208 @@ export default function DashboardPage() {
                     </p>
                   ) : (
                     <>
-                      {/* Sticky Table Container */}
+                      {/* Filter & Sort Controls */}
                       <div style={{
-                        maxHeight: '500px',
-                        overflowY: 'auto',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '12px',
+                        marginBottom: '16px',
+                        padding: '12px',
+                        background: 'rgba(255,255,255,0.02)',
                         borderRadius: '8px',
-                        border: '1px solid var(--color-border)',
+                        border: '1px solid var(--border-glass)',
                       }}>
-                        <table style={{
-                          width: '100%',
-                          borderCollapse: 'collapse',
-                          fontSize: '0.85rem',
-                        }}>
-                          <thead style={{
-                            position: 'sticky',
-                            top: 0,
-                            background: 'var(--color-surface)',
-                            zIndex: 10,
+                        {/* Search */}
+                        <div style={{ flex: '1 1 200px' }}>
+                          <input
+                            type="text"
+                            placeholder="🔍 Cari transaksi..."
+                            value={txSearchQuery}
+                            onChange={(e) => setTxSearchQuery(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 12px',
+                              background: 'var(--color-bg)',
+                              border: '1px solid var(--border-glass)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              fontSize: '0.85rem',
+                            }}
+                          />
+                        </div>
+                        {/* Filter by Type */}
+                        <div style={{ flex: '0 0 auto' }}>
+                          <select
+                            value={txFilterType}
+                            onChange={(e) => setTxFilterType(e.target.value as any)}
+                            style={{
+                              padding: '8px 12px',
+                              background: 'var(--color-bg)',
+                              border: '1px solid var(--border-glass)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              fontSize: '0.85rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="all">Semua Tipe</option>
+                            <option value="income">📥 Pemasukan</option>
+                            <option value="expense">📤 Pengeluaran</option>
+                          </select>
+                        </div>
+                        {/* Sort */}
+                        <div style={{ flex: '0 0 auto', display: 'flex', gap: '8px' }}>
+                          <select
+                            value={txSortField}
+                            onChange={(e) => setTxSortField(e.target.value as any)}
+                            style={{
+                              padding: '8px 12px',
+                              background: 'var(--color-bg)',
+                              border: '1px solid var(--border-glass)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              fontSize: '0.85rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="created_at">Tanggal</option>
+                            <option value="amount">Jumlah</option>
+                            <option value="description">Deskripsi</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setTxSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                            style={{
+                              padding: '8px 12px',
+                              background: 'var(--color-bg)',
+                              border: '1px solid var(--border-glass)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              cursor: 'pointer',
+                              fontSize: '0.85rem',
+                            }}
+                            title={txSortOrder === 'asc' ? 'Urutkan descending' : 'Urutkan ascending'}
+                          >
+                            {txSortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Processed transactions with filter & sort */}
+                      {(() => {
+                        let filtered = [...rawTransactions];
+                        // Apply type filter
+                        if (txFilterType !== 'all') {
+                          filtered = filtered.filter(t => t.type === txFilterType);
+                        }
+                        // Apply search
+                        if (txSearchQuery) {
+                          const q = txSearchQuery.toLowerCase();
+                          filtered = filtered.filter(t =>
+                            (t.description || '').toLowerCase().includes(q) ||
+                            String(t.amount).includes(q)
+                          );
+                        }
+                        // Apply sort
+                        filtered.sort((a, b) => {
+                          let valA: any, valB: any;
+                          switch (txSortField) {
+                            case 'created_at':
+                              valA = new Date(a.created_at || 0).getTime();
+                              valB = new Date(b.created_at || 0).getTime();
+                              break;
+                            case 'amount':
+                              valA = Number(a.amount || 0);
+                              valB = Number(b.amount || 0);
+                              break;
+                            case 'description':
+                              valA = (a.description || '').toLowerCase();
+                              valB = (b.description || '').toLowerCase();
+                              break;
+                            default:
+                              valA = a.created_at;
+                              valB = b.created_at;
+                          }
+                          if (txSortOrder === 'asc') {
+                            return valA > valB ? 1 : -1;
+                          }
+                          return valA < valB ? 1 : -1;
+                        });
+                        return filtered;
+                      })().length === 0 ? (
+                        <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', textAlign: 'center', padding: '20px' }}>
+                          Tidak ada transaksi yang cocok dengan filter.
+                        </p>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                            Menampilkan {(() => {
+                              let filtered = [...rawTransactions];
+                              if (txFilterType !== 'all') filtered = filtered.filter(t => t.type === txFilterType);
+                              if (txSearchQuery) {
+                                const q = txSearchQuery.toLowerCase();
+                                filtered = filtered.filter(t => (t.description || '').toLowerCase().includes(q) || String(t.amount).includes(q));
+                              }
+                              return filtered.length;
+                            })()} dari {rawTransactions.length} transaksi
+                          </div>
+                          {/* Sticky Table Container */}
+                          <div style={{
+                            maxHeight: '500px',
+                            overflowY: 'auto',
+                            borderRadius: '8px',
+                            border: '1px solid var(--color-border)',
                           }}>
-                            <tr>
-                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Deskripsi</th>
-                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Tipe</th>
-                              <th style={{ padding: '12px 16px', textAlign: 'right', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Jumlah</th>
-                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Tanggal & Waktu</th>
-                              <th style={{ padding: '12px 16px', textAlign: 'center', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Aksi</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rawTransactions
-                              .slice((currentTxPage - 1) * 10, currentTxPage * 10)
-                              .map((tx: any, idx: number) => (
+                            <table style={{
+                              width: '100%',
+                              borderCollapse: 'collapse',
+                              fontSize: '0.85rem',
+                            }}>
+                              <thead style={{
+                                position: 'sticky',
+                                top: 0,
+                                background: 'var(--color-surface)',
+                                zIndex: 10,
+                              }}>
+                                <tr>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Deskripsi</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Tipe</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'right', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Jumlah</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Tanggal & Waktu</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'center', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Aksi</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(() => {
+                                  let filtered = [...rawTransactions];
+                                  if (txFilterType !== 'all') filtered = filtered.filter(t => t.type === txFilterType);
+                                  if (txSearchQuery) {
+                                    const q = txSearchQuery.toLowerCase();
+                                    filtered = filtered.filter(t => (t.description || '').toLowerCase().includes(q) || String(t.amount).includes(q));
+                                  }
+                                  filtered.sort((a, b) => {
+                                    let valA: any, valB: any;
+                                    switch (txSortField) {
+                                      case 'created_at':
+                                        valA = new Date(a.created_at || 0).getTime();
+                                        valB = new Date(b.created_at || 0).getTime();
+                                        break;
+                                      case 'amount':
+                                        valA = Number(a.amount || 0);
+                                        valB = Number(b.amount || 0);
+                                        break;
+                                      case 'description':
+                                        valA = (a.description || '').toLowerCase();
+                                        valB = (b.description || '').toLowerCase();
+                                        break;
+                                      default:
+                                        valA = a.created_at;
+                                        valB = b.created_at;
+                                    }
+                                    return txSortOrder === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
+                                  });
+                                  return filtered;
+                                })().slice((currentTxPage - 1) * 10, currentTxPage * 10).map((tx: any, idx: number) => (
                                 <tr key={tx.id || idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
                                   <td style={{ padding: '12px 16px', fontWeight: 500 }}>
                                     {tx.description}
@@ -2332,54 +2851,64 @@ export default function DashboardPage() {
                       </div>
 
                       {/* Pagination */}
-                      {Math.ceil(rawTransactions.length / 10) > 1 && (
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          gap: '8px',
-                          marginTop: '16px',
-                          padding: '12px',
-                          background: 'var(--color-bg)',
-                          borderRadius: '8px',
-                        }}>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentTxPage(p => Math.max(1, p - 1))}
-                            disabled={currentTxPage === 1}
-                            style={{
-                              padding: '6px 12px',
-                              background: 'var(--color-surface)',
-                              border: '1px solid var(--color-border)',
-                              borderRadius: '6px',
-                              color: 'var(--text-primary)',
-                              cursor: currentTxPage === 1 ? 'not-allowed' : 'pointer',
-                              opacity: currentTxPage === 1 ? 0.5 : 1,
-                            }}
-                          >
-                            ←
-                          </button>
-                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                            Halaman {currentTxPage} dari {Math.ceil(rawTransactions.length / 10)}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentTxPage(p => Math.min(Math.ceil(rawTransactions.length / 10), p + 1))}
-                            disabled={currentTxPage >= Math.ceil(rawTransactions.length / 10)}
-                            style={{
-                              padding: '6px 12px',
-                              background: 'var(--color-surface)',
-                              border: '1px solid var(--color-border)',
-                              borderRadius: '6px',
-                              color: 'var(--text-primary)',
-                              cursor: currentTxPage >= Math.ceil(rawTransactions.length / 10) ? 'not-allowed' : 'pointer',
-                              opacity: currentTxPage >= Math.ceil(rawTransactions.length / 10) ? 0.5 : 1,
-                            }}
-                          >
-                            →
-                          </button>
-                        </div>
-                      )}
+                      {(() => {
+                        let filtered = [...rawTransactions];
+                        if (txFilterType !== 'all') filtered = filtered.filter(t => t.type === txFilterType);
+                        if (txSearchQuery) {
+                          const q = txSearchQuery.toLowerCase();
+                          filtered = filtered.filter(t => (t.description || '').toLowerCase().includes(q) || String(t.amount).includes(q));
+                        }
+                        const totalPages = Math.ceil(filtered.length / 10);
+                        if (totalPages <= 1) return null;
+                        return (
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '8px',
+                            marginTop: '16px',
+                            padding: '12px',
+                            background: 'var(--color-bg)',
+                            borderRadius: '8px',
+                          }}>
+                            <button
+                              type="button"
+                              onClick={() => setCurrentTxPage(p => Math.max(1, p - 1))}
+                              disabled={currentTxPage === 1}
+                              style={{
+                                padding: '6px 12px',
+                                background: 'var(--color-surface)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: '6px',
+                                color: 'var(--text-primary)',
+                                cursor: currentTxPage === 1 ? 'not-allowed' : 'pointer',
+                                opacity: currentTxPage === 1 ? 0.5 : 1,
+                              }}
+                            >
+                              ←
+                            </button>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                              Halaman {currentTxPage} dari {totalPages}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setCurrentTxPage(p => Math.min(totalPages, p + 1))}
+                              disabled={currentTxPage >= totalPages}
+                              style={{
+                                padding: '6px 12px',
+                                background: 'var(--color-surface)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: '6px',
+                                color: 'var(--text-primary)',
+                                cursor: currentTxPage >= totalPages ? 'not-allowed' : 'pointer',
+                                opacity: currentTxPage >= totalPages ? 0.5 : 1,
+                              }}
+                            >
+                              →
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                 </div>
@@ -2401,13 +2930,150 @@ export default function DashboardPage() {
                     </p>
                   ) : (
                     <>
-                      {/* Sticky Table Container */}
+                      {/* Filter & Sort Controls for Todos */}
                       <div style={{
-                        maxHeight: '500px',
-                        overflowY: 'auto',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '12px',
+                        marginBottom: '16px',
+                        padding: '12px',
+                        background: 'rgba(255,255,255,0.02)',
                         borderRadius: '8px',
-                        border: '1px solid var(--color-border)',
+                        border: '1px solid var(--border-glass)',
                       }}>
+                        {/* Search */}
+                        <div style={{ flex: '1 1 200px' }}>
+                          <input
+                            type="text"
+                            placeholder="🔍 Cari tugas..."
+                            value={todoSearchQuery}
+                            onChange={(e) => setTodoSearchQuery(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 12px',
+                              background: 'var(--color-bg)',
+                              border: '1px solid var(--border-glass)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              fontSize: '0.85rem',
+                            }}
+                          />
+                        </div>
+                        {/* Filter by Status */}
+                        <div style={{ flex: '0 0 auto' }}>
+                          <select
+                            value={todoFilterStatus}
+                            onChange={(e) => setTodoFilterStatus(e.target.value as any)}
+                            style={{
+                              padding: '8px 12px',
+                              background: 'var(--color-bg)',
+                              border: '1px solid var(--border-glass)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              fontSize: '0.85rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="all">Semua Status</option>
+                            <option value="pending">⏳ Tertunda</option>
+                            <option value="completed">✅ Selesai</option>
+                            <option value="cancelled">❌ Batal</option>
+                          </select>
+                        </div>
+                        {/* Sort */}
+                        <div style={{ flex: '0 0 auto', display: 'flex', gap: '8px' }}>
+                          <select
+                            value={todoSortField}
+                            onChange={(e) => setTodoSortField(e.target.value as any)}
+                            style={{
+                              padding: '8px 12px',
+                              background: 'var(--color-bg)',
+                              border: '1px solid var(--border-glass)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              fontSize: '0.85rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="created_at">Tanggal Buat</option>
+                            <option value="due_date">Tenggat</option>
+                            <option value="task_name">Nama</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setTodoSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                            style={{
+                              padding: '8px 12px',
+                              background: 'var(--color-bg)',
+                              border: '1px solid var(--border-glass)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              cursor: 'pointer',
+                              fontSize: '0.85rem',
+                            }}
+                            title={todoSortOrder === 'asc' ? 'Urutkan descending' : 'Urutkan ascending'}
+                          >
+                            {todoSortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Processed todos with filter & sort */}
+                      {(() => {
+                        let filtered = [...rawTodos];
+                        if (todoFilterStatus !== 'all') {
+                          filtered = filtered.filter(t => t.status === todoFilterStatus);
+                        }
+                        if (todoSearchQuery) {
+                          const q = todoSearchQuery.toLowerCase();
+                          filtered = filtered.filter(t => (t.task_name || '').toLowerCase().includes(q));
+                        }
+                        filtered.sort((a, b) => {
+                          let valA: any, valB: any;
+                          switch (todoSortField) {
+                            case 'created_at':
+                              valA = new Date(a.created_at || 0).getTime();
+                              valB = new Date(b.created_at || 0).getTime();
+                              break;
+                            case 'due_date':
+                              valA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+                              valB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+                              break;
+                            case 'task_name':
+                              valA = (a.task_name || '').toLowerCase();
+                              valB = (b.task_name || '').toLowerCase();
+                              break;
+                            default:
+                              valA = a.created_at;
+                              valB = b.created_at;
+                          }
+                          return todoSortOrder === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
+                        });
+                        return filtered;
+                      })().length === 0 ? (
+                        <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', textAlign: 'center', padding: '20px' }}>
+                          Tidak ada tugas yang cocok dengan filter.
+                        </p>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                            Menampilkan {(() => {
+                              let filtered = [...rawTodos];
+                              if (todoFilterStatus !== 'all') filtered = filtered.filter(t => t.status === todoFilterStatus);
+                              if (todoSearchQuery) {
+                                const q = todoSearchQuery.toLowerCase();
+                                filtered = filtered.filter(t => (t.task_name || '').toLowerCase().includes(q));
+                              }
+                              return filtered.length;
+                            })()} dari {rawTodos.length} tugas
+                          </div>
+                          {/* Sticky Table Container */}
+                          <div style={{
+                            maxHeight: '500px',
+                            overflowY: 'auto',
+                            borderRadius: '8px',
+                            border: '1px solid var(--color-border)',
+                          }}>
                         <table style={{
                           width: '100%',
                           borderCollapse: 'collapse',
@@ -2422,14 +3088,42 @@ export default function DashboardPage() {
                             <tr>
                               <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Nama Tugas</th>
                               <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Status</th>
-                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Tenggat Waktu</th>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Waktu Mulai</th>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Pengingat</th>
                               <th style={{ padding: '12px 16px', textAlign: 'center', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Aksi</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {rawTodos
-                              .slice((currentTodoPage - 1) * 10, currentTodoPage * 10)
-                              .map((todo: any, idx: number) => (
+                            {(() => {
+                              let filtered = [...rawTodos];
+                              if (todoFilterStatus !== 'all') filtered = filtered.filter(t => t.status === todoFilterStatus);
+                              if (todoSearchQuery) {
+                                const q = todoSearchQuery.toLowerCase();
+                                filtered = filtered.filter(t => (t.task_name || '').toLowerCase().includes(q));
+                              }
+                              filtered.sort((a, b) => {
+                                let valA: any, valB: any;
+                                switch (todoSortField) {
+                                  case 'created_at':
+                                    valA = new Date(a.created_at || 0).getTime();
+                                    valB = new Date(b.created_at || 0).getTime();
+                                    break;
+                                  case 'due_date':
+                                    valA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+                                    valB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+                                    break;
+                                  case 'task_name':
+                                    valA = (a.task_name || '').toLowerCase();
+                                    valB = (b.task_name || '').toLowerCase();
+                                    break;
+                                  default:
+                                    valA = a.created_at;
+                                    valB = b.created_at;
+                                }
+                                return todoSortOrder === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
+                              });
+                              return filtered;
+                            })().slice((currentTodoPage - 1) * 10, currentTodoPage * 10).map((todo: any, idx: number) => (
                                 <tr key={todo.id || idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
                                   <td style={{ padding: '12px 16px', fontWeight: 500 }}>
                                     {todo.task_name}
@@ -2447,12 +3141,22 @@ export default function DashboardPage() {
                                     </span>
                                   </td>
                                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                                    <div>{todo.due_date ? new Date(todo.due_date).toLocaleDateString('id-ID') : '-'}</div>
-                                    {todo.dynamic_metadata?.jam && (
+                                    <div>{todo.waktu_mulai ? new Date(todo.waktu_mulai).toLocaleDateString('id-ID') : (todo.due_date ? new Date(todo.due_date).toLocaleDateString('id-ID') : '-')}</div>
+                                    {(todo.waktu_mulai ? todo.waktu_mulai : todo.dynamic_metadata?.jam) && (
                                       <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
-                                        🕒 {todo.dynamic_metadata.jam}
+                                        🕒 {(todo.waktu_mulai || todo.dynamic_metadata?.jam)?.slice(11, 16) || ''}
                                       </div>
                                     )}
+                                  </td>
+                                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                    {todo.pengingat ? (
+                                      <>
+                                        <div>{new Date(todo.pengingat).toLocaleDateString('id-ID')}</div>
+                                        <div style={{ fontSize: '0.8rem', opacity: 0.8, color: 'var(--color-warning)' }}>
+                                          🔔 {todo.pengingat.slice(11, 16)}
+                                        </div>
+                                      </>
+                                    ) : '-'}
                                   </td>
                                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
@@ -2496,55 +3200,86 @@ export default function DashboardPage() {
                         </table>
                       </div>
 
-                      {/* Pagination */}
-                      {Math.ceil(rawTodos.length / 10) > 1 && (
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          gap: '8px',
-                          marginTop: '16px',
-                          padding: '12px',
-                          background: 'var(--color-bg)',
-                          borderRadius: '8px',
-                        }}>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentTodoPage(p => Math.max(1, p - 1))}
-                            disabled={currentTodoPage === 1}
-                            style={{
-                              padding: '6px 12px',
-                              background: 'var(--color-surface)',
-                              border: '1px solid var(--color-border)',
-                              borderRadius: '6px',
-                              color: 'var(--text-primary)',
-                              cursor: currentTodoPage === 1 ? 'not-allowed' : 'pointer',
-                              opacity: currentTodoPage === 1 ? 0.5 : 1,
-                            }}
-                          >
-                            ←
-                          </button>
-                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                            Halaman {currentTodoPage} dari {Math.ceil(rawTodos.length / 10)}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentTodoPage(p => Math.min(Math.ceil(rawTodos.length / 10), p + 1))}
-                            disabled={currentTodoPage >= Math.ceil(rawTodos.length / 10)}
-                            style={{
-                              padding: '6px 12px',
-                              background: 'var(--color-surface)',
-                              border: '1px solid var(--color-border)',
-                              borderRadius: '6px',
-                              color: 'var(--text-primary)',
-                              cursor: currentTodoPage >= Math.ceil(rawTodos.length / 10) ? 'not-allowed' : 'pointer',
-                              opacity: currentTodoPage >= Math.ceil(rawTodos.length / 10) ? 0.5 : 1,
-                            }}
-                          >
-                            →
-                          </button>
-                        </div>
-                      )}
+                      {/* Pagination for Todos */}
+                      {(() => {
+                        let filtered = [...rawTodos];
+                        if (todoFilterStatus !== 'all') filtered = filtered.filter(t => t.status === todoFilterStatus);
+                        if (todoSearchQuery) {
+                          const q = todoSearchQuery.toLowerCase();
+                          filtered = filtered.filter(t => (t.task_name || '').toLowerCase().includes(q));
+                        }
+                        filtered.sort((a, b) => {
+                          let valA: any, valB: any;
+                          switch (todoSortField) {
+                            case 'created_at':
+                              valA = new Date(a.created_at || 0).getTime();
+                              valB = new Date(b.created_at || 0).getTime();
+                              break;
+                            case 'due_date':
+                              valA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+                              valB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+                              break;
+                            case 'task_name':
+                              valA = (a.task_name || '').toLowerCase();
+                              valB = (b.task_name || '').toLowerCase();
+                              break;
+                            default:
+                              valA = a.created_at;
+                              valB = b.created_at;
+                          }
+                          return todoSortOrder === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
+                        });
+                        const totalPages = Math.ceil(filtered.length / 10);
+                        if (totalPages <= 1) return null;
+                        return (
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '8px',
+                            marginTop: '16px',
+                            padding: '12px',
+                            background: 'var(--color-bg)',
+                            borderRadius: '8px',
+                          }}>
+                            <button
+                              type="button"
+                              onClick={() => setCurrentTodoPage(p => Math.max(1, p - 1))}
+                              disabled={currentTodoPage === 1}
+                              style={{
+                                padding: '6px 12px',
+                                background: 'var(--color-surface)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: '6px',
+                                color: 'var(--text-primary)',
+                                cursor: currentTodoPage === 1 ? 'not-allowed' : 'pointer',
+                                opacity: currentTodoPage === 1 ? 0.5 : 1,
+                              }}
+                            >
+                              ←
+                            </button>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                              Halaman {currentTodoPage} dari {totalPages}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setCurrentTodoPage(p => Math.min(totalPages, p + 1))}
+                              disabled={currentTodoPage >= totalPages}
+                              style={{
+                                padding: '6px 12px',
+                                background: 'var(--color-surface)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: '6px',
+                                color: 'var(--text-primary)',
+                                cursor: currentTodoPage >= totalPages ? 'not-allowed' : 'pointer',
+                                opacity: currentTodoPage >= totalPages ? 0.5 : 1,
+                              }}
+                            >
+                              →
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                 </div>
