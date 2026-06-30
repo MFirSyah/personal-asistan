@@ -30,6 +30,7 @@ export default function DashboardPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isFromMobile, setIsFromMobile] = useState(false);
   const [profile, setProfile] = useState<any>({
     fullname: 'Sobat Setia',
     assistant_name: 'Sobat AI',
@@ -352,6 +353,12 @@ export default function DashboardPage() {
     if (isDemoModeToken) {
       loadMockData();
       return;
+    }
+
+    // Check if accessing from mobile app
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      setIsFromMobile(params.get('from') === 'mobile');
     }
 
     const client = getSupabaseClient();
@@ -1237,8 +1244,9 @@ export default function DashboardPage() {
 
   return (
     <div>
-      {/* Header */}
-      <header className="dashboard-header">
+      {/* Header - Hide when accessed from mobile app */}
+      {!isFromMobile && (
+        <header className="dashboard-header">
         <div className="brand">
           <h1>DASHBOARD KOGNITIF</h1>
           <p>Asisten Pribadi: {profile.assistant_name} ({
@@ -1274,6 +1282,7 @@ export default function DashboardPage() {
           </button>
         </div>
       </header>
+      )}
 
       {/* Morning Briefing Banner */}
       {morningBriefing && !briefingDismissed && (
