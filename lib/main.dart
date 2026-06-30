@@ -1745,7 +1745,7 @@ class _WebAppDashboardScreenState extends State<WebAppDashboardScreen> {
       body: Stack(
         children: [
           InAppWebView(
-            initialUrlRequest: URLRequest(url: WebUri("$_currentUrl/dashboard")),
+            initialUrlRequest: URLRequest(url: WebUri("$_currentUrl/dashboard?from=mobile")),
             initialSettings: InAppWebViewSettings(
               javaScriptEnabled: true,
               domStorageEnabled: true,
