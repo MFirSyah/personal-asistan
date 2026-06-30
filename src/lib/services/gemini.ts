@@ -42,10 +42,16 @@ export interface ExtractedData {
   tasks: Array<{
     task_name: string;
     due_date?: string; // ISO string (Tenggat Waktu / Deadline)
-    status: 'pending';
+    status: 'pending' | 'completed' | 'cancelled'; // NEW: Support all statuses
     jam?: string; // Format: HH:MM (24-hour format)
     waktu_mulai?: string; // ISO string (Waktu Mulai / Start Time) - sesuai request AI chat
     pengingat?: string; // ISO string (Pengingat / Reminder) - sesuai request AI chat
+  }>;
+  // NEW: Task updates - for updating existing tasks
+  task_updates: Array<{
+    task_name: string; // Name to match existing task
+    new_status: 'pending' | 'completed' | 'cancelled';
+    notes?: string; // Optional notes
   }>;
   moods: Array<{
     mood: string;
@@ -77,15 +83,16 @@ Extraction Rules:
    - E.g., "gaji tanggal 6 Juni" -> amount: [extract], type: "income", description: "gaji", transaction_date: "2026-06-06"
    - E.g., "tanggal 8 Juni jam 1 siang" -> transaction_date: "2026-06-08", jam: "13:00"
    - If date/time NOT mentioned, OMIT the field (don't include null/empty)
-2. "tasks": Extract task name, due date if specified, AND time if mentioned.
-   - E.g., "tugas besok jam 9 pagi" -> task_name: "tugas", due_date: tomorrow ISO, jam: "09:00"
-   - E.g., "waktu mulai jam 2 siang, pengingat jam 1 siang" -> waktu_mulai: "14:00", pengingat: "13:00"
-   - "waktu_mulai": Kapan aktivitas dimulai (bukan deadline, tapi waktu mulai)
-   - "pengingat": Jam pengingat untuk mengingatkan aktivitas
-   - Jika user menyebutkan "waktu mulai", "mulai jam", "awalnya jam" -> extract ke waktu_mulai
-   - Jika user menyebutkan "pengingat", "ingatkan jam", "reminder jam" -> extract ke pengingat
-3. "moods": Extract user mood or feelings mentioned.
-4. "habits": Extract habits checked in or mentioned.
+2. "tasks": Extract NEW task to be created (user wants to ADD a new task).
+   - E.g., "tambah tugas besok jam 9 pagi" -> task_name: "tugas", due_date: tomorrow ISO, jam: "09:00", status: "pending"
+3. "task_updates": Extract EXISTING tasks that user wants to UPDATE their status.
+   - CRITICAL: If user says "selesai", "telah selesai", "sudah selesai", "tandai selesai", "update status jadi selesai" -> extract to task_updates with new_status: "completed"
+   - CRITICAL: If user says "batal", "dibatalkan", "cancel", "tidak jadi" -> new_status: "cancelled"
+   - CRITICAL: If user says "tunda", "pending lagi", "aktifkan lagi" -> new_status: "pending"
+   - E.g., "selesaikan semua tugas saya" -> task_updates: [{task_name: "match all existing pending tasks", new_status: "completed"}]
+   - E.g., "tugas bimbingan skripsi saya yang tanggal 10 Juni ubah jadi selesai" -> task_updates: [{task_name: "bimbingan skripsi", new_status: "completed", notes: "tanggal 10 Juni"}]
+4. "moods": Extract user mood or feelings mentioned.
+5. "habits": Extract habits checked in or mentioned.
 
 Return the response STRICTLY in this JSON format:
 {
@@ -94,6 +101,9 @@ Return the response STRICTLY in this JSON format:
   ],
   "tasks": [
     { "task_name": string, "due_date"?: string (ISO 8601), "status": "pending", "jam"?: "HH:MM", "waktu_mulai"?: "HH:MM", "pengingat"?: "HH:MM" }
+  ],
+  "task_updates": [
+    { "task_name": string, "new_status": "pending" | "completed" | "cancelled", "notes"?: string }
   ],
   "moods": [
     { "mood": string, "description": string }
@@ -125,12 +135,12 @@ If any category has no entries, return an empty array for that key. Do not inclu
       attempts--;
       if (attempts === 0) {
         Sentry.captureException(error);
-        return { transactions: [], tasks: [], moods: [], habits: [] };
+        return { transactions: [], tasks: [], task_updates: [], moods: [], habits: [] };
       }
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
-  return { transactions: [], tasks: [], moods: [], habits: [] };
+  return { transactions: [], tasks: [], task_updates: [], moods: [], habits: [] };
 }
 
 /**
@@ -193,6 +203,11 @@ export async function runStage2Chat(params: {
 
   const extractionSummary = JSON.stringify(params.extractedData, null, 2);
 
+  // Add task update results to context if available
+  const taskUpdateContext = (params.extractedData as any).taskUpdateResults
+    ? `\n\nIMPORTANT - DATABASE UPDATE RESULTS:\nThe following task updates were successfully processed in the database:\n${JSON.stringify((params.extractedData as any).taskUpdateResults, null, 2)}\n\nYou MUST acknowledge these updates in your response! Example: "Oke! Saya sudah mengubah status 5 tugas menjadi selesai. 💪"`
+    : '';
+
   // Get timezone display name
   const tzDisplayName = {
     'Asia/Jayapura': 'WIT',
@@ -244,7 +259,7 @@ DATE CALCULATION:
 Always include relevant and friendly emojis/emoticons (e.g. 😊, 😂, 😎, 👍, 🔥, etc.) in your responses to make the interaction feel lively, warm, and natural.
 
 We have already parsed the user's message and extracted this structured data (which will be processed automatically in our backend):
-${extractionSummary}
+${extractionSummary}${taskUpdateContext}
 
 Reply to the user's current message in Indonesian, fully in character.
 If you have multiple distinct points to make or want to reply in stages, separate them with the tag '[BREAK]' (literally the string '[BREAK]').

@@ -362,7 +362,7 @@ export async function POST(req: NextRequest) {
     // 7. Stage 1 Extraction
     const extractedData = shouldRunExtraction(scrubbedMessage)
       ? await runStage1Extraction(scrubbedMessage)
-      : { transactions: [], tasks: [], moods: [], habits: [] };
+      : { transactions: [], tasks: [], task_updates: [], moods: [], habits: [] };
 
     // Process Stage 1 results: insert transactions
     if (extractedData.transactions && extractedData.transactions.length > 0) {
@@ -417,6 +417,72 @@ export async function POST(req: NextRequest) {
         return record;
       });
       await supabaseAdmin.from('todo_lists').insert(dbTasks);
+    }
+
+    // Process Stage 1 results: UPDATE existing tasks status
+    // This handles requests like "selesaikan semua tugas saya" or "tandai X jadi selesai"
+    if (extractedData.task_updates && extractedData.task_updates.length > 0) {
+      const updateResults: { taskName: string; newStatus: string; updated: number }[] = [];
+
+      for (const update of extractedData.task_updates) {
+        const taskNameLower = update.task_name.toLowerCase();
+
+        // Special case: "match all" or "semua" means update all pending tasks
+        if (taskNameLower === 'match all existing pending tasks' ||
+            taskNameLower === 'all' ||
+            taskNameLower === 'semua' ||
+            taskNameLower === 'semuanya' ||
+            taskNameLower.includes('semua') && taskNameLower.includes('tugas')) {
+
+          // Update ALL pending tasks to the new status
+          const { data: allPending, error: fetchError } = await supabaseAdmin
+            .from('todo_lists')
+            .select('id, task_name')
+            .eq('user_id', userId)
+            .eq('status', 'pending');
+
+          if (!fetchError && allPending && allPending.length > 0) {
+            const idsToUpdate = allPending.map((t: any) => t.id);
+            await supabaseAdmin
+              .from('todo_lists')
+              .update({ status: update.new_status })
+              .in('id', idsToUpdate);
+
+            updateResults.push({
+              taskName: `${allPending.length} tugas`,
+              newStatus: update.new_status,
+              updated: allPending.length
+            });
+          }
+        } else {
+          // Find and update specific task by name (partial match, case-insensitive)
+          const { data: matchingTasks, error: matchError } = await supabaseAdmin
+            .from('todo_lists')
+            .select('id, task_name')
+            .eq('user_id', userId)
+            .ilike('task_name', `%${update.task_name}%`);
+
+          if (!matchError && matchingTasks && matchingTasks.length > 0) {
+            // Update the first matching task (or all if multiple)
+            const idsToUpdate = matchingTasks.map((t: any) => t.id);
+            await supabaseAdmin
+              .from('todo_lists')
+              .update({ status: update.new_status })
+              .in('id', idsToUpdate);
+
+            updateResults.push({
+              taskName: matchingTasks[0].task_name,
+              newStatus: update.new_status,
+              updated: matchingTasks.length
+            });
+          }
+        }
+      }
+
+      // Store update results for response message
+      if (updateResults.length > 0) {
+        (extractedData as any).taskUpdateResults = updateResults;
+      }
     }
 
     // 8. Stage 2 Chat styling
