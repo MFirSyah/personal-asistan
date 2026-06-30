@@ -33,6 +33,11 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Next.js
+.next/
+out/
+.vercel/
+
 # Symbolication related
 app.*.symbols
 
