@@ -456,7 +456,7 @@ export async function POST(req: NextRequest) {
 
         // D. Build update object
         const updateData: Record<string, any> = {
-          total_chats: supabaseAdmin.rpc('increment', { x: 1 }).then(() => { }).catch(() => { }),
+          total_chats: (chatPrefs?.total_chats || 0) + 1,
           last_chat_at: new Date().toISOString(),
           avg_message_length: chatPrefs?.avg_message_length
             ? Math.round((chatPrefs.avg_message_length + wordCount) / 2)
