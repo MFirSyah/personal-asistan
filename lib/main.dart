@@ -3241,6 +3241,8 @@ class NativeSettingsScreen extends StatefulWidget {
 class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
   final _supabase = Supabase.instance.client;
   String _fullname = 'Memuat...';
+  String _userNickname = 'Memuat...';
+  String _userEmail = '-';
   String _assistantName = 'Sobat AI';
   String _selectedPersonality = 'witty_sidekick';
   String _longTermMemory = 'Belum ada data memori kognitif. Gunakan aplikasi dan chat untuk melatih memori AI.';
@@ -3248,6 +3250,7 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
   String? _avatarUrl;
   bool _isLoading = true;
   int _morningBriefingHour = 5;
+  bool _systemStatus = false;
 
   // Sync ego options with registration form
   final List<Map<String, dynamic>> _egoOptions = [
@@ -3276,6 +3279,7 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
   void initState() {
     super.initState();
     _loadProfile();
+    _checkSystemStatus();
   }
 
   Future<void> _loadProfile() async {
@@ -3315,11 +3319,13 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
       if (profileData != null && mounted) {
         setState(() {
           _fullname = profileData['fullname'] ?? 'Sobat';
+          _userNickname = profileData['user_nickname'] ?? 'Sobat';
+          _userEmail = user.email ?? '-';
           _assistantName = profileData['assistant_name'] ?? 'Sobat AI';
           _selectedPersonality = profileData['selected_personality'] ?? 'witty_sidekick';
-          
+
           final meta = profileData['dynamic_metadata'] as Map<String, dynamic>?;
-          _longTermMemory = meta?['long_term_memory'] ?? 
+          _longTermMemory = meta?['long_term_memory'] ??
               'Belum ada data memori kognitif. Gunakan aplikasi secara rutin untuk melatih memori AI.';
           _preferredLanguage = meta?['language'] ?? 'id';
           _avatarUrl = meta?['avatar_url'];
@@ -3334,6 +3340,33 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _checkSystemStatus() async {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) {
+        if (mounted) setState(() => _systemStatus = false);
+        return;
+      }
+
+      final startTime = DateTime.now();
+      await Supabase.instance.client
+          .from('user_profiles')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+      final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+
+      if (mounted) {
+        setState(() {
+          _systemStatus = elapsed < 2000;
+        });
+      }
+    } catch (e) {
+      print("System status check failed: $e");
+      if (mounted) setState(() => _systemStatus = false);
     }
   }
 
@@ -3411,6 +3444,32 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
     return result == true;
   }
 
+  // Helper function to build info row with optional edit
+  Widget _buildInfoRow(IconData icon, String label, String value, String? fieldToEdit, bool canEdit) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 14, color: Colors.grey),
+        const SizedBox(width: 6),
+        Text(
+          '$label: ',
+          style: const TextStyle(color: Colors.grey, fontSize: 13),
+        ),
+        Text(
+          value,
+          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+        ),
+        if (canEdit && fieldToEdit != null) ...[
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () => _showEditFieldDialog(label, fieldToEdit, value),
+            child: const Icon(Icons.edit, size: 12, color: Color(0xFF3B82F6)),
+          ),
+        ],
+      ],
+    );
+  }
+
   Future<void> _uploadAvatar() async {
     try {
       final picker = ImagePicker();
@@ -3461,6 +3520,9 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
         meta['long_term_memory'] = value;
         await _supabase.from('user_profiles').update({'dynamic_metadata': meta}).eq('id', user.id);
         setState(() { _longTermMemory = value; });
+      } else if (field == 'user_nickname') {
+        await _supabase.from('user_profiles').update({'user_nickname': value}).eq('id', user.id);
+        setState(() { _userNickname = value; });
       } else {
         if (field == 'fullname') {
           final nickname = value.trim().split(' ')[0];
@@ -3470,6 +3532,7 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
           }).eq('id', user.id);
           setState(() {
             _fullname = value;
+            _userNickname = nickname;
           });
         } else {
           await _supabase.from('user_profiles').update({field: value}).eq('id', user.id);
@@ -3615,6 +3678,48 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
                         ),
                         const SizedBox(height: 12),
                         const Divider(color: Color(0x11FFFFFF), thickness: 1),
+                        const SizedBox(height: 12),
+                        // Nama Panggilan
+                        _buildInfoRow(Icons.person_outline, 'Nama Panggilan', _userNickname, 'user_nickname', true),
+                        const SizedBox(height: 8),
+                        // Email Terdaftar
+                        _buildInfoRow(Icons.email_outlined, 'Email Terdaftar', _userEmail, null, false),
+                        const SizedBox(height: 8),
+                        // Status Sistem
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _systemStatus ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (_systemStatus ? const Color(0xFF10B981) : const Color(0xFFEF4444)).withOpacity(0.5),
+                                    blurRadius: 4,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Status: ${_systemStatus ? 'Database Aktif' : 'Offline'}',
+                              style: TextStyle(
+                                color: _systemStatus ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: _checkSystemStatus,
+                              child: Icon(Icons.refresh, size: 14, color: Colors.grey),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
