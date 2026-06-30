@@ -366,23 +366,46 @@ export async function POST(req: NextRequest) {
 
     // Process Stage 1 results: insert transactions
     if (extractedData.transactions && extractedData.transactions.length > 0) {
-      const dbTransactions = extractedData.transactions.map((tx) => ({
-        user_id: userId,
-        amount: tx.amount,
-        type: tx.type,
-        description: tx.description,
-      }));
+      const dbTransactions = extractedData.transactions.map((tx) => {
+        const record: any = {
+          user_id: userId,
+          amount: tx.amount,
+          type: tx.type,
+          description: tx.description,
+        };
+
+        // Add transaction_date if provided by extraction
+        if (tx.transaction_date) {
+          record.transaction_date = tx.transaction_date;
+        }
+
+        // Add jam (time) to dynamic_metadata if provided
+        if (tx.jam) {
+          record.dynamic_metadata = { jam: tx.jam };
+        }
+
+        return record;
+      });
       await supabaseAdmin.from('money_trackers').insert(dbTransactions);
     }
 
     // Process Stage 1 results: insert tasks
     if (extractedData.tasks && extractedData.tasks.length > 0) {
-      const dbTasks = extractedData.tasks.map((task) => ({
-        user_id: userId,
-        task_name: task.task_name,
-        status: task.status || 'pending',
-        due_date: task.due_date || null,
-      }));
+      const dbTasks = extractedData.tasks.map((task) => {
+        const record: any = {
+          user_id: userId,
+          task_name: task.task_name,
+          status: task.status || 'pending',
+          due_date: task.due_date || null,
+        };
+
+        // Add jam (time) to dynamic_metadata if provided
+        if (task.jam) {
+          record.dynamic_metadata = { jam: task.jam };
+        }
+
+        return record;
+      });
       await supabaseAdmin.from('todo_lists').insert(dbTasks);
     }
 
