@@ -210,6 +210,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   String? _pendingUserId;
   String? _pendingEmail;
   final _usernameController = TextEditingController();
+  final _assistantNameController = TextEditingController();
   String _selectedEgo = 'witty_sidekick';
 
   final List<Map<String, dynamic>> _egoOptions = [
@@ -347,7 +348,9 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         'fullname': _usernameController.text.trim(),
         'user_nickname': _usernameController.text.trim().split(' ')[0],
         'selected_personality': _selectedEgo,
-        'assistant_name': selectedEgoData['name'],
+        'assistant_name': _assistantNameController.text.trim().isNotEmpty
+            ? _assistantNameController.text.trim()
+            : selectedEgoData['name'],
       });
 
       print("Profile setup successful for user: $_pendingEmail");
@@ -382,6 +385,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
       _pendingUserId = null;
       _pendingEmail = null;
       _usernameController.clear();
+      _assistantNameController.clear();
       _showProfileSetup = false;
       _isRegister = false;
     });
@@ -775,6 +779,13 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
               decoration: _inputDecoration('Nama User', Icons.person),
               validator: (val) => val == null || val.trim().isEmpty ? 'Nama user wajib diisi' : null,
             ),
+            const SizedBox(height: 16),
+            // Nama AI Field
+            TextFormField(
+              controller: _assistantNameController,
+              decoration: _inputDecoration('Nama AI', Icons.smart_toy),
+              validator: (val) => val == null || val.trim().isEmpty ? 'Nama AI wajib diisi' : null,
+            ),
             const SizedBox(height: 20),
             // Ego Selection
             const Text(
@@ -925,6 +936,7 @@ class ProfileSetupScreen extends StatefulWidget {
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
+  final _assistantNameController = TextEditingController();
   bool _isLoading = false;
   String _selectedEgo = 'witty_sidekick';
   String _errorMsg = '';
@@ -971,7 +983,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         'fullname': _usernameController.text.trim(),
         'user_nickname': _usernameController.text.trim().split(' ')[0],
         'selected_personality': _selectedEgo,
-        'assistant_name': selectedEgoData['name'],
+        'assistant_name': _assistantNameController.text.trim().isNotEmpty
+            ? _assistantNameController.text.trim()
+            : selectedEgoData['name'],
       });
 
       print("Profile setup successful for user: ${user.email}");
@@ -1190,6 +1204,31 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                         ),
                         validator: (val) => val == null || val.trim().isEmpty ? 'Nama user wajib diisi' : null,
                       ),
+                      const SizedBox(height: 16),
+                      // Nama AI Field
+                      TextFormField(
+                        controller: _assistantNameController,
+                        decoration: InputDecoration(
+                          labelText: 'Nama AI',
+                          prefixIcon: const Icon(Icons.smart_toy, color: Color(0xFF8B5CF6)),
+                          labelStyle: const TextStyle(color: Colors.grey),
+                          filled: true,
+                          fillColor: const Color(0xFF0F172A),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0x33FFFFFF)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFF8B5CF6)),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFEF4444)),
+                          ),
+                        ),
+                        validator: (val) => val == null || val.trim().isEmpty ? 'Nama AI wajib diisi' : null,
+                      ),
                       const SizedBox(height: 20),
                       // Ego Selection
                       const Text(
@@ -1373,6 +1412,18 @@ class _DashboardNavigatorScreenState extends State<DashboardNavigatorScreen> {
       final session = Supabase.instance.client.auth.currentSession;
       if (session == null) return;
 
+      // Check if user has any data (transactions, tasks, or chat history)
+      // If user is new with no data, skip morning briefing
+      final hasTransactions = await LocalDatabaseHelper.instance.getTransactions();
+      final hasTasks = await LocalDatabaseHelper.instance.getTasks();
+      final hasChatHistory = await LocalDatabaseHelper.instance.getChatMessages(null);
+
+      // Skip briefing if user has no data at all
+      if (hasTransactions.isEmpty && hasTasks.isEmpty && hasChatHistory.isEmpty) {
+        print('New user detected - skipping morning briefing (no data available)');
+        return;
+      }
+
       // Get user timezone
       final userTimezone = DateTime.now().timeZoneName;
       final timezoneMap = {
@@ -1528,8 +1579,53 @@ class _WebAppDashboardScreenState extends State<WebAppDashboardScreen> {
   InAppWebViewController? _webViewController;
   bool _isLoading = true;
   double _progress = 0.0;
+  bool _systemStatus = false; // false = offline (red), true = online (green)
+  DateTime? _lastStatusCheck;
 
   String get _currentUrl => AppConfig.activeUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSystemStatus();
+  }
+
+  Future<void> _checkSystemStatus() async {
+    final now = DateTime.now();
+    // Debounce check - only check if last check was more than 30 seconds ago
+    if (_lastStatusCheck != null &&
+        now.difference(_lastStatusCheck!).inSeconds < 30) {
+      return;
+    }
+    _lastStatusCheck = now;
+
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) {
+        if (mounted) setState(() => _systemStatus = false);
+        return;
+      }
+
+      // Quick ping to Supabase to check connection
+      final startTime = DateTime.now();
+      await Supabase.instance.client
+          .from('user_profiles')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+      final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+
+      if (mounted) {
+        setState(() {
+          // Consider online if response is under 2 seconds
+          _systemStatus = elapsed < 2000;
+        });
+      }
+    } catch (e) {
+      print("System status check failed: $e");
+      if (mounted) setState(() => _systemStatus = false);
+    }
+  }
 
   Future<void> _injectSessionHandshake() async {
     final session = Supabase.instance.client.auth.currentSession;
@@ -1560,7 +1656,76 @@ class _WebAppDashboardScreenState extends State<WebAppDashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard Analitis', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Row(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Text('Dashboard Analitis', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    const SizedBox(width: 8),
+                    // System Status Indicator (like BCA mobile)
+                    GestureDetector(
+                      onTap: _checkSystemStatus,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _systemStatus
+                              ? const Color(0xFF10B981).withOpacity(0.2)
+                              : const Color(0xFFEF4444).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _systemStatus
+                                ? const Color(0xFF10B981).withOpacity(0.5)
+                                : const Color(0xFFEF4444).withOpacity(0.5),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _systemStatus
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFFEF4444),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (_systemStatus
+                                            ? const Color(0xFF10B981)
+                                            : const Color(0xFFEF4444))
+                                        .withOpacity(0.5),
+                                    blurRadius: 4,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              _systemStatus ? 'DB Aktif' : 'Offline',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: _systemStatus
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFFEF4444),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
         centerTitle: false,
         backgroundColor: const Color(0xFF0F172A),
         elevation: 0,
@@ -1572,6 +1737,7 @@ class _WebAppDashboardScreenState extends State<WebAppDashboardScreen> {
                 _isLoading = true;
               });
               _webViewController?.reload();
+              _checkSystemStatus();
             },
           )
         ],
@@ -3083,12 +3249,13 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
   bool _isLoading = true;
   int _morningBriefingHour = 5;
 
-  final List<Map<String, String>> _personalities = [
-    {'id': 'witty_sidekick', 'name': 'The Witty Sidekick', 'desc': 'Sarkas, cerdas, setia, menghibur'},
-    {'id': 'tough_love_coach', 'name': 'The Tough-Love Coach', 'desc': 'Disiplin, to-the-point, fokus target'},
-    {'id': 'ultimate_hype_man', 'name': 'The Ultimate Hype-Man', 'desc': 'Optimis, energetik, suportif'},
-    {'id': 'stoic_strategist', 'name': 'The Stoic Strategist', 'desc': 'Dingin, logis, tenang, kalkulatif'},
-    {'id': 'elegant_confidant', 'name': 'The Elegant Confidant', 'desc': 'Alfred-vibe, sopan, humor halus'},
+  // Sync ego options with registration form
+  final List<Map<String, dynamic>> _egoOptions = [
+    {'id': 'witty_sidekick', 'name': 'Sobat AI', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
+    {'id': 'wise_mentor', 'name': 'Guru Bijak', 'desc': 'Bijak & Inspiratif', 'icon': Icons.school},
+    {'id': 'efficient_executive', 'name': 'Eksekutif', 'desc': 'Tegas & Produktif', 'icon': Icons.work},
+    {'id': 'creative_companion', 'name': 'Sahabat Kreatif', 'desc': 'Kreatif & Supportif', 'icon': Icons.lightbulb},
+    {'id': 'calm_balancer', 'name': 'Penyeimbang', 'desc': 'Tenang & Empati', 'icon': Icons.spa},
   ];
 
   String _getJoinedDate() {
@@ -3179,13 +3346,19 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
     });
 
     try {
+      final selectedEgoData = _egoOptions.firstWhere((e) => e['id'] == id);
       await _supabase.from('user_profiles').update({
         'selected_personality': id,
+        'assistant_name': selectedEgoData['name'],
       }).eq('id', user.id);
-      
+
+      setState(() {
+        _assistantName = selectedEgoData['name'] as String;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Ego kepribadian berhasil diubah menjadi: ${_personalities.firstWhere((p) => p['id'] == id)['name']}'),
+          content: Text('Karakter AI berhasil diubah menjadi: ${selectedEgoData['name']}'),
           backgroundColor: const Color(0xFF10B981),
         ),
       );
@@ -3674,15 +3847,15 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Ego Selector
-                  const Text('Pilih Ego / Kepribadian Asisten', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  // Ego Selector - menggunakan _egoOptions yang sudah di-sync dengan registration
+                  const Text('Pilih Karakter AI Anda', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   const SizedBox(height: 12),
                   ListView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _personalities.length,
+                    itemCount: _egoOptions.length,
                     itemBuilder: (context, index) {
-                      final item = _personalities[index];
+                      final item = _egoOptions[index];
                       final isSelected = item['id'] == _selectedPersonality;
 
                       return Card(
@@ -3696,8 +3869,20 @@ class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
                         ),
                         margin: const EdgeInsets.only(bottom: 10),
                         child: ListTile(
-                          title: Text(item['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text(item['desc'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.3) : const Color(0xFF1E293B),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              item['icon'] as IconData,
+                              color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(item['name'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text(item['desc'] as String, style: const TextStyle(color: Colors.grey, fontSize: 12)),
                           trailing: isSelected ? const Icon(Icons.check_circle, color: Color(0xFF3B82F6)) : null,
                           onTap: () async {
                             final locked = await _verifyAssistantNameLock();
