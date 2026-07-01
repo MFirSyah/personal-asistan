@@ -77,9 +77,9 @@ export default function DashboardPage() {
   const [txFilterType, setTxFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [txSearchQuery, setTxSearchQuery] = useState('');
 
-  // Sorting & Filter States for Todos Table
-  const [todoSortField, setTodoSortField] = useState<'created_at' | 'due_date' | 'task_name'>('created_at');
-  const [todoSortOrder, setTodoSortOrder] = useState<'asc' | 'desc'>('desc');
+  // Sorting & Filter States for Todos Table (Default to due_date ascending)
+  const [todoSortField, setTodoSortField] = useState<'created_at' | 'due_date' | 'task_name'>('due_date');
+  const [todoSortOrder, setTodoSortOrder] = useState<'asc' | 'desc'>('asc');
   const [todoFilterStatus, setTodoFilterStatus] = useState<'all' | 'pending' | 'completed' | 'cancelled'>('all');
   const [todoSearchQuery, setTodoSearchQuery] = useState('');
 
@@ -2634,8 +2634,15 @@ export default function DashboardPage() {
                           let valA: any, valB: any;
                           switch (txSortField) {
                             case 'created_at':
-                              valA = new Date(a.created_at || 0).getTime();
-                              valB = new Date(b.created_at || 0).getTime();
+                              const dateA = a.transaction_date || (a.created_at ? a.created_at.split('T')[0] : '');
+                              const jamA = a.dynamic_metadata?.jam || (a.created_at ? a.created_at.split('T')[1]?.slice(0,5) : '00:00');
+                              valA = new Date(`${dateA}T${jamA}`).getTime();
+                              if (isNaN(valA)) valA = new Date(a.created_at || 0).getTime();
+
+                              const dateB = b.transaction_date || (b.created_at ? b.created_at.split('T')[0] : '');
+                              const jamB = b.dynamic_metadata?.jam || (b.created_at ? b.created_at.split('T')[1]?.slice(0,5) : '00:00');
+                              valB = new Date(`${dateB}T${jamB}`).getTime();
+                              if (isNaN(valB)) valB = new Date(b.created_at || 0).getTime();
                               break;
                             case 'amount':
                               valA = Number(a.amount || 0);
@@ -2709,8 +2716,15 @@ export default function DashboardPage() {
                                     let valA: any, valB: any;
                                     switch (txSortField) {
                                       case 'created_at':
-                                        valA = new Date(a.created_at || 0).getTime();
-                                        valB = new Date(b.created_at || 0).getTime();
+                                        const dateA = a.transaction_date || (a.created_at ? a.created_at.split('T')[0] : '');
+                                        const jamA = a.dynamic_metadata?.jam || (a.created_at ? a.created_at.split('T')[1]?.slice(0,5) : '00:00');
+                                        valA = new Date(`${dateA}T${jamA}`).getTime();
+                                        if (isNaN(valA)) valA = new Date(a.created_at || 0).getTime();
+
+                                        const dateB = b.transaction_date || (b.created_at ? b.created_at.split('T')[0] : '');
+                                        const jamB = b.dynamic_metadata?.jam || (b.created_at ? b.created_at.split('T')[1]?.slice(0,5) : '00:00');
+                                        valB = new Date(`${dateB}T${jamB}`).getTime();
+                                        if (isNaN(valB)) valB = new Date(b.created_at || 0).getTime();
                                         break;
                                       case 'amount':
                                         valA = Number(a.amount || 0);
@@ -2974,8 +2988,14 @@ export default function DashboardPage() {
                               valB = new Date(b.created_at || 0).getTime();
                               break;
                             case 'due_date':
-                              valA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
-                              valB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+                              const getDueTime = (item: any) => {
+                                const wBerakhir = item.waktu_berakhir || item.due_date || item.dynamic_metadata?.waktu_berakhir || item.dynamic_metadata?.due_date;
+                                if (!wBerakhir) return todoSortOrder === 'asc' ? Infinity : -Infinity;
+                                const t = new Date(wBerakhir).getTime();
+                                return isNaN(t) ? (todoSortOrder === 'asc' ? Infinity : -Infinity) : t;
+                              };
+                              valA = getDueTime(a);
+                              valB = getDueTime(b);
                               break;
                             case 'task_name':
                               valA = (a.task_name || '').toLowerCase();
@@ -3048,8 +3068,14 @@ export default function DashboardPage() {
                                         valB = new Date(b.created_at || 0).getTime();
                                         break;
                                       case 'due_date':
-                                        valA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
-                                        valB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+                                        const getDueTime = (item: any) => {
+                                          const wBerakhir = item.waktu_berakhir || item.due_date || item.dynamic_metadata?.waktu_berakhir || item.dynamic_metadata?.due_date;
+                                          if (!wBerakhir) return todoSortOrder === 'asc' ? Infinity : -Infinity;
+                                          const t = new Date(wBerakhir).getTime();
+                                          return isNaN(t) ? (todoSortOrder === 'asc' ? Infinity : -Infinity) : t;
+                                        };
+                                        valA = getDueTime(a);
+                                        valB = getDueTime(b);
                                         break;
                                       case 'task_name':
                                         valA = (a.task_name || '').toLowerCase();
