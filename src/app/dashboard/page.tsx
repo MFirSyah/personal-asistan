@@ -655,13 +655,15 @@ export default function DashboardPage() {
   };
 
   const handleDeletePlan = async (planId: string) => {
+    // Find the plan BEFORE filtering
+    const planToDelete = futurePlans.find(p => p.id === planId);
     const updatedPlans = futurePlans.filter(p => p.id !== planId);
     setFuturePlans(updatedPlans);
-    setPlannedInsightIds(prev => prev.filter(id => {
-      // Also unmark this insight as planned
-      const plan = futurePlans.find(p => p.id === planId);
-      return id !== planId && id !== `insight-${plan?.name?.toLowerCase().replace(/\s+/g, '-')}`;
-    }));
+
+    // Unmark this insight from planned list
+    const insightIdToRemove = planId;
+    const insightGeneratedId = planToDelete ? `insight-${planToDelete.name?.toLowerCase().replace(/\s+/g, '-')}` : null;
+    setPlannedInsightIds(prev => prev.filter(id => id !== insightIdToRemove && id !== insightGeneratedId));
 
     if (supabase) {
       try {
@@ -3055,7 +3057,7 @@ export default function DashboardPage() {
                           Tidak ada tugas yang cocok dengan filter.
                         </p>
                       ) : (
-                        <>
+                        <div>
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
                             Menampilkan {(() => {
                               let filtered = [...rawTodos];
@@ -3280,7 +3282,7 @@ export default function DashboardPage() {
                           </div>
                         );
                       })()}
-                    </>
+                    </div>
                   )}
                 </div>
               )}
