@@ -2208,8 +2208,8 @@ export default function DashboardPage() {
                       <div className="form-row">
                         <div className="form-group">
                           <label htmlFor="amount">Jumlah Uang (Rp)</label>
-                          <input 
-                            type="number" 
+                          <input
+                            type="number"
                             id="amount" 
                             className="form-control" 
                             value={mtAmount}
@@ -2911,6 +2911,7 @@ export default function DashboardPage() {
                           </div>
                         );
                       })()}
+                    </div>
                     </div>
                   )}
                 </div>
