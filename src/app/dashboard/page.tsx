@@ -2716,7 +2716,7 @@ export default function DashboardPage() {
                           Tidak ada transaksi yang cocok dengan filter.
                         </p>
                       ) : (
-                        <>
+                        <div>
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
                             Menampilkan {(() => {
                               let filtered = [...rawTransactions];
@@ -2911,7 +2911,7 @@ export default function DashboardPage() {
                           </div>
                         );
                       })()}
-                    </>
+                    </div>
                   )}
                 </div>
               )}
