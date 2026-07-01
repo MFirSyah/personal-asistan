@@ -1701,7 +1701,7 @@ export default function DashboardPage() {
         </nav>
 
         {activeView === 'analysis' && (
-          <>
+          <div>
             {/* Developer simulation controls banner */}
             {!supabase && (
               <div className="dev-simulation-panel">
@@ -2151,11 +2151,11 @@ export default function DashboardPage() {
                 </div>
               )}
             </section>
-          </>
+          </div>
         )}
 
         {activeView === 'data' && (
-          <>
+          <div>
             {/* Tab: Manajemen Data & Input */}
             <section className="manual-input-section">
               <div className="card" style={{ gap: '20px' }}>
@@ -2204,7 +2204,7 @@ export default function DashboardPage() {
 
                 <form onSubmit={handleFormSubmit} className="input-form">
                   {activeFormTab === 'money' ? (
-                    <>
+                    <div>
                       <div className="form-row">
                         <div className="form-group">
                           <label htmlFor="amount">Jumlah Uang (Rp)</label>
@@ -2373,9 +2373,9 @@ export default function DashboardPage() {
                           </button>
                         </div>
                       </div>
-                    </>
+                    </div>
                   ) : (
-                    <>
+                    <div>
                       <div className="form-row">
                         <div className="form-group">
                           <label htmlFor="task_name">Nama Tugas / To-Do</label>
@@ -2493,7 +2493,7 @@ export default function DashboardPage() {
                           </button>
                         </div>
                       </div>
-                    </>
+                    </div>
                   )}
 
                   <button
@@ -2582,7 +2582,7 @@ export default function DashboardPage() {
                       Belum ada data transaksi. Mulai chat dengan AI untuk mencatat transaksi!
                     </p>
                   ) : (
-                    <>
+                    <div>
                       {/* Filter & Sort Controls */}
                       <div style={{
                         display: 'flex',
@@ -2912,7 +2912,7 @@ export default function DashboardPage() {
                         );
                       })()}
                     </div>
-                    </>
+                    </div>
                   )}
                 </div>
               )}
@@ -2932,7 +2932,7 @@ export default function DashboardPage() {
                       Belum ada tugas. Mulai chat dengan AI untuk mencatat tugas!
                     </p>
                   ) : (
-                    <>
+                    <div>
                       {/* Filter & Sort Controls for Todos */}
                       <div style={{
                         display: 'flex',
@@ -3153,12 +3153,12 @@ export default function DashboardPage() {
                                   </td>
                                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                                     {todo.pengingat ? (
-                                      <>
+                                      <div>
                                         <div>{new Date(todo.pengingat).toLocaleDateString('id-ID')}</div>
                                         <div style={{ fontSize: '0.8rem', opacity: 0.8, color: 'var(--color-warning)' }}>
                                           🔔 {todo.pengingat.slice(11, 16)}
                                         </div>
-                                      </>
+                                      </div>
                                     ) : '-'}
                                   </td>
                                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
@@ -3284,12 +3284,12 @@ export default function DashboardPage() {
                         );
                       })()}
                     </div>
-                    </>
+                    </div>
                   )}
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
 
       </main>
