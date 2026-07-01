@@ -51,3 +51,4 @@ app.*.map.json
 .apk
 .dex
 *.keystore
+node_modules

@@ -1793,7 +1793,7 @@ export default function DashboardPage() {
         </nav>
 
         {activeView === 'analysis' && (
-          <>
+          <div className="fragment-wrapper">
             {/* Developer simulation controls banner */}
             {!supabase && (
               <div className="dev-simulation-panel">
@@ -2276,11 +2276,11 @@ export default function DashboardPage() {
                 </div>
               )}
             </section>
-          </>
+          </div>
         )}
 
         {activeView === 'data' && (
-          <>
+          <div className="fragment-wrapper">
             {/* Tab: Manajemen Data & Input */}
             <section className="manual-input-section">
               <div className="card" style={{ gap: '20px' }}>
@@ -2329,7 +2329,7 @@ export default function DashboardPage() {
 
                 <form onSubmit={handleFormSubmit} className="input-form">
                   {activeFormTab === 'money' ? (
-                    <>
+                    <div className="fragment-wrapper">
                       <div className="form-row">
                         <div className="form-group">
                           <label htmlFor="amount">Jumlah Uang (Rp)</label>
@@ -2498,9 +2498,9 @@ export default function DashboardPage() {
                           </button>
                         </div>
                       </div>
-                    </>
+                    </div>
                   ) : (
-                    <>
+                    <div className="fragment-wrapper">
                       <div className="form-row">
                         <div className="form-group">
                           <label htmlFor="task_name">Nama Tugas / To-Do</label>
@@ -2618,7 +2618,7 @@ export default function DashboardPage() {
                           </button>
                         </div>
                       </div>
-                    </>
+                    </div>
                   )}
 
                   <button
@@ -2707,7 +2707,7 @@ export default function DashboardPage() {
                       Belum ada data transaksi. Mulai chat dengan AI untuk mencatat transaksi!
                     </p>
                   ) : (
-                    <>
+                    <div className="fragment-wrapper">
                       {/* Filter & Sort Controls */}
                       <div style={{
                         display: 'flex',
@@ -2841,7 +2841,7 @@ export default function DashboardPage() {
                           Tidak ada transaksi yang cocok dengan filter.
                         </p>
                       ) : (
-                        <>
+                        <div className="fragment-wrapper">
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
                             Menampilkan {(() => {
                               let filtered = [...rawTransactions];
@@ -3036,11 +3036,8 @@ export default function DashboardPage() {
                           </div>
                         );
                       })()}
-                    </>
-                  )}
+                    </div>)}
                 </div>
-              )}
-
               {/* ============================================================ */}
               {/* TODOS TABLE */}
               {/* ============================================================ */}
@@ -3056,7 +3053,7 @@ export default function DashboardPage() {
                       Belum ada tugas. Mulai chat dengan AI untuk mencatat tugas!
                     </p>
                   ) : (
-                    <>
+                    <div className="fragment-wrapper">
                       {/* Filter & Sort Controls for Todos */}
                       <div style={{
                         display: 'flex',
@@ -3182,7 +3179,7 @@ export default function DashboardPage() {
                           Tidak ada tugas yang cocok dengan filter.
                         </p>
                       ) : (
-                        <>
+                        <div className="fragment-wrapper">
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
                             Menampilkan {(() => {
                               let filtered = [...rawTodos];
@@ -3277,12 +3274,12 @@ export default function DashboardPage() {
                                   </td>
                                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                                     {todo.pengingat ? (
-                                      <>
+                                      <div className="fragment-wrapper">
                                         <div>{new Date(todo.pengingat).toLocaleDateString('id-ID')}</div>
                                         <div style={{ fontSize: '0.8rem', opacity: 0.8, color: 'var(--color-warning)' }}>
                                           🔔 {todo.pengingat.slice(11, 16)}
                                         </div>
-                                      </>
+                                      </div>
                                     ) : '-'}
                                   </td>
                                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
@@ -3407,12 +3404,9 @@ export default function DashboardPage() {
                           </div>
                         );
                       })()}
-                    </>
+                    </div>
                   )}
-                </div>
-              )}
             </div>
-          </>
         )}
 
       </main>
