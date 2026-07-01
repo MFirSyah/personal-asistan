@@ -83,6 +83,31 @@ export default function DashboardPage() {
   const [todoFilterStatus, setTodoFilterStatus] = useState<'all' | 'pending' | 'completed' | 'cancelled'>('all');
   const [todoSearchQuery, setTodoSearchQuery] = useState('');
 
+  // Refresh insights state with countdown
+  const [insightsRefreshCountdown, setInsightsRefreshCountdown] = useState(3600); // 1 hour in seconds
+  const [insightsVersion, setInsightsVersion] = useState(0); // Increment to force re-render
+
+  // Countdown timer for insights refresh
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setInsightsRefreshCountdown(prev => {
+        if (prev <= 1) {
+          // Reset to 1 hour when countdown reaches 0
+          return 3600;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Format countdown to MM:SS
+  const formatCountdown = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   // Sync profile data to edit states
   useEffect(() => {
     if (profile) {
@@ -655,12 +680,12 @@ export default function DashboardPage() {
   };
 
   const handleDeletePlan = async (planId: string) => {
-    // Find the plan BEFORE filtering
+    // Find the plan first before filtering
     const planToDelete = futurePlans.find(p => p.id === planId);
     const updatedPlans = futurePlans.filter(p => p.id !== planId);
     setFuturePlans(updatedPlans);
 
-    // Unmark this insight from planned list
+    // Also unmark this insight from planned list
     const insightIdToRemove = planId;
     const insightGeneratedId = planToDelete ? `insight-${planToDelete.name?.toLowerCase().replace(/\s+/g, '-')}` : null;
     setPlannedInsightIds(prev => prev.filter(id => id !== insightIdToRemove && id !== insightGeneratedId));
@@ -887,7 +912,11 @@ export default function DashboardPage() {
   };
 
   // Dynamic Special Insights - analyzes actual user data
+  // insightsVersion is used as dependency to force re-computation on refresh
   const getSpecialInsights = () => {
+    // Use insightsVersion to trigger re-computation
+    void insightsVersion;
+
     const insights: Array<{
       id: string;
       title: string;
@@ -960,95 +989,158 @@ export default function DashboardPage() {
 
     // 1. Largest Expense Analysis (only if we have transactions)
     if (largestExpense) {
-      const isLargeExpense = Number(largestExpense.amount) > totalExpense * 0.3;
+      const largestPercent = totalExpense > 0 ? Math.round((Number(largestExpense.amount) / totalExpense) * 100) : 0;
+      const isLargeExpense = largestPercent > 30;
+
+      let urgencyLevel = 'normal';
+      let nextStep = 'Pertahankan pengeluaran ini karena masih dalam batas wajar.';
+
+      if (largestPercent > 50) {
+        urgencyLevel = 'kritis';
+        nextStep = `Pengeluaran ini 占 ${largestPercent}% dari total! Sangat direkomendasikan untuk evaluasi mendalam.`;
+      } else if (largestPercent > 30) {
+        urgencyLevel = 'perlu perhatian';
+        nextStep = 'Sebaiknya buat anggaran khusus untuk kategori ini.';
+      }
+
       insights.push({
         id: 'insight-largest-expense',
         title: `Pengeluaran Terbesar: ${largestExpense.description}`,
         tag: 'Keuangan',
         isInternet: false,
-        description: `Pengeluaran tertinggi Anda adalah "${largestExpense.description}" sebesar Rp ${Number(largestExpense.amount).toLocaleString('id-ID')} pada ${largestExpense.transaction_date || 'tanggal tidak diketahui'}. ${isLargeExpense ? `⚠️ Pengeluaran ini составляет ${Math.round((Number(largestExpense.amount) / totalExpense) * 100)}% dari total pengeluaran! Pertimbangkan untuk mengurangi pengeluaran ini.` : 'Pengeluaran ini masih dalam batas wajar.'}`,
+        description: `"${largestExpense.description}" = Rp ${Number(largestExpense.amount).toLocaleString('id-ID')} (${largestPercent}% dari total Rp ${totalExpense.toLocaleString('id-ID')}). Tanggal: ${largestExpense.transaction_date || 'tidak tercatat'}. Urgensi: ${urgencyLevel}. ${nextStep}`,
         planName: `Evaluasi: ${largestExpense.description}`,
         actionSteps: [
-          `Analisis apakah "${largestExpense.description}" benar-benar kebutuhan bulan ini`,
-          isLargeExpense ? 'Cari alternatif yang lebih hemat' : 'Pertahankan pengeluaran ini',
-          'Track perkembangan pengeluaran ini minggu depan'
+          `Apakah "${largestExpense.description}" kebutuhan pokok atau keinginan?`,
+          isLargeExpense ? `Cari 2 alternatif yang lebih hemat` : 'Pertahankan jika ini kebutuhan penting',
+          'Review pengeluaran ini di akhir bulan'
         ],
         targetDate: '1 minggu'
       });
     }
 
-    // 2. Top Spending Category
+    // 2. Top Spending Category - Detailed Analysis
     if (topCategory) {
       const [category, amount] = topCategory;
       if (category !== 'Lainnya' && amount > 0) {
+        const categoryPercent = totalExpense > 0 ? Math.round((amount / totalExpense) * 100) : 0;
+        const transactionCount = rawTransactions.filter(t =>
+          t.type === 'expense' && (t.dynamic_metadata?.kategori === category)
+        ).length;
+
+        let analysis = '';
+        let suggestion = '';
+
+        if (categoryPercent > 50) {
+          analysis = `Dominan banget! ${categoryPercent}% dari semua pengeluaran Anda hanya untuk ${category}.`;
+          suggestion = 'Ini tergolong tidak seimbang. Sebaiknya buat limit khusus.';
+        } else if (categoryPercent > 35) {
+          analysis = `Cukup signifikan. ${categoryPercent}% dari pengeluaran untuk ${category} (rata-rata Rp ${Math.round(amount / Math.max(transactionCount, 1)).toLocaleString('id-ID')}/transaksi).`;
+          suggestion = 'Kategorinya perlu diawasi agar tidak membengkak.';
+        } else {
+          analysis = `Normal. ${categoryPercent}% dari pengeluaran untuk ${category}.`;
+          suggestion = 'Kategorinya masih dalam batas wajar.';
+        }
+
         insights.push({
           id: 'insight-top-category',
-          title: `Kategori Pengeluaran Terbesar: ${category}`,
-          tag: 'Anti-Boros',
+          title: `Fokus: Kategori "${category}"`,
+          tag: 'Pengeluaran',
           isInternet: false,
-          description: `Sebagian besar pengeluaran Anda habis untuk "${category}" yaitu Rp ${amount.toLocaleString('id-ID')} (${Math.round((amount / totalExpense) * 100)}% dari total). ${Number(amount) > totalExpense * 0.4 ? 'Ini tergolong sangat tinggi. Sebaiknya buat anggaran khusus untuk kategori ini.' : 'Kategorinya masih wajar.'}`,
+          description: `${analysis} Total: Rp ${amount.toLocaleString('id-ID')} dari ${transactionCount} transaksi. ${suggestion}`,
           planName: `Optimasi Pengeluaran ${category}`,
           actionSteps: [
-            `Buat batas anggaran bulanan untuk ${category}`,
-            'Track setiap pengeluaran di kategori ini',
-            `Evaluasi apakah ada pengeluaran ${category} yang bisa dikurangi`
+            `Hitung budget bulanan untuk ${category}: Rp ${Math.round(amount / 1).toLocaleString('id-ID')}/bulan`,
+            `Review setiap pengeluaran ${category} - apa yang bisa dikurangi?`,
+            'Gunakan prinsip "ingin vs perlu" sebelum membeli'
           ],
           targetDate: 'Bulan ini'
         });
       }
     }
 
-    // 3. Night Spending Warning
-    if (nightSpendingPercent > 25 && rawTransactions.length > 0) {
+    // 3. Night Spending Warning - Data-Driven Analysis
+    if (nightSpendingPercent > 0 && rawTransactions.length > 0) {
+      const spendMalamAmount = rawTransactions.filter(t => {
+        const hr = parseHour(t);
+        return t.type === 'expense' && hr >= 17;
+      }).reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+      let warningLevel = 'rendah';
+      let recommendation = 'Pola belanja Anda cukup merata sepanjang hari.';
+
+      if (nightSpendingPercent > 40) {
+        warningLevel = 'tinggi';
+        recommendation = 'Sebagian besar pengeluaran terjadi di malam hari. Risiko belanja impulsif meningkat saat malam karena menurunnya kemampuan membuat keputusan rasional.';
+      } else if (nightSpendingPercent > 25) {
+        warningLevel = 'sedang';
+        recommendation = 'Terdapat kecenderungan belanja di malam hari. Perhatikan apakah ini冲动购物 (belanja impulsif) atau kebutuhan sebenarnya.';
+      }
+
       insights.push({
         id: 'insight-night-spending',
-        title: '⚠️ Peringatan: Belanja Malam Tinggi',
-        tag: 'Anti-Boros',
-        isInternet: true,
-        description: `${nightSpendingPercent}% dari pengeluaran Anda terjadi setelah jam 5 sore. Penelitian menunjukkan belanja malam sering dikaitkan dengan keputusan impulsif dan emosi. ${nightSpendingPercent > 40 ? '⚠️ Pola ini sangat mengkhawatirkan!' : ''}`,
-        planName: 'Kurangi Belanja Malam',
+        title: nightSpendingPercent > 40 ? '⚠️ Belanja Malam Sangat Tinggi!' : nightSpendingPercent > 25 ? '⚠️ Perhatikan Pola Belanja Malam' : '📊 Analisis Pola Belanja Harian',
+        tag: 'Perilaku',
+        isInternet: false,
+        description: `${nightSpendingPercent}% dari total pengeluaran Rp ${totalExpense.toLocaleString('id-ID')} (Rp ${spendMalamAmount.toLocaleString('id-ID')}) terjadi setelah jam 5 sore. Level risiko: ${warningLevel}. ${recommendation}`,
+        planName: 'Optimalkan Waktu Belanja',
         actionSteps: [
-          'Tunda keputusan belanja non-esensial sampai keesokan harinya',
-          'Hapus pintasan e-commerce dari layar utama setelah jam 8 malam',
-          nightSpendingPercent > 40 ? 'Pertimbangkan untuk uninstall aplikasi belanja sementara' : 'Ganti kebiasaan scroll dengan membaca buku atau meditasi'
+          nightSpendingPercent > 25 ? 'Catat setiap pengeluaran malam selama 1 minggu untuk identifikasi pola' : 'Pertahankan pola belanja yang sudah baik',
+          nightSpendingPercent > 25 ? 'Tunda keputusan belanja non-esensial sampai besok pagi' : 'Lanjutkan kebiasaan belanja yang bijak',
+          'Identifikasi apakah belanja malam adalah kebutuhan atau impulse'
         ],
-        targetDate: '2 minggu'
+        targetDate: nightSpendingPercent > 25 ? '1 minggu' : '3 bulan'
       });
     }
 
-    // 4. Savings Rate Analysis
-    if (savingsRate < 20 && totalIncome > 0) {
+    // 4. Savings Rate Analysis - Comprehensive
+    if (totalIncome > 0) {
       const targetSavings = Math.round(totalIncome * 0.2);
       const currentSavings = Math.max(0, netSavings);
-      insights.push({
-        id: 'insight-savings-rate',
-        title: 'Tingkat Tabungan Perlu Ditingkatkan',
-        tag: 'Keuangan',
-        isInternet: false,
-        description: `Tingkat tabungan Anda bulan ini hanya ${savingsRate.toFixed(1)}%. Idealnya minimal 20% dari penghasilan. Anda perlu menghemat Rp ${Math.max(0, (targetSavings - currentSavings)).toLocaleString()} lagi untuk mencapai target.`,
-        planName: 'Tingkatkan Tabungan ke 20%',
-        actionSteps: [
-          'Identifikasi 3 pengeluaran terbesar yang bisa dikurangi',
-          'Set up auto-transfer ke tabungan saat penghasilan masuk',
-          'Track progress tabungan setiap minggu'
-        ],
-        targetDate: 'Bulan ini'
-      });
-    } else if (savingsRate >= 20 && totalIncome > 0) {
-      insights.push({
-        id: 'insight-good-savings',
-        title: '🎉 Kebiasaan Tabungan yang Baik!',
-        tag: 'Keuangan',
-        isInternet: false,
-        description: `Tingkat tabungan Anda ${savingsRate.toFixed(1)}% - di atas target 20%! Saldo bersih Rp ${netSavings.toLocaleString('id-ID')}. Pertahankan kebiasaan ini dan pertimbangkan untuk investasi.`,
-        planName: 'Pertahankan & Tingkatkan Tabungan',
-        actionSteps: [
-          'Pertahankan tingkat tabungan minimal 20%',
-          'Pertimbangkan reksa dana atau investasi ringan',
-          'Buat dana darurat 6 bulan pengeluaran'
-        ],
-        targetDate: '3 bulan'
-      });
+      const gap = targetSavings - currentSavings;
+
+      if (savingsRate < 20) {
+        let severity = 'ringan';
+        let advice = 'Ayo tingkatkan tabungan Anda!';
+
+        if (savingsRate < 5) {
+          severity = 'parah';
+          advice = 'Pola saat ini unsustainable. Immediate action diperlukan!';
+        } else if (savingsRate < 10) {
+          severity = 'sedang';
+          advice = 'Tabungan sangat minim. Perlu strategi agresif.';
+        }
+
+        insights.push({
+          id: 'insight-savings-rate',
+          title: `Tabungan: ${savingsRate.toFixed(1)}% (Target: 20%)`,
+          tag: 'Tabungan',
+          isInternet: false,
+          description: `Dari penghasilan Rp ${totalIncome.toLocaleString('id-ID')}/bulan, Anda mengeluarkan Rp ${totalExpense.toLocaleString('id-ID')} dan menabung Rp ${currentSavings.toLocaleString('id-ID')} (${savingsRate.toFixed(1)}%). Severity: ${severity}. Anda perlu tambahan Rp ${Math.max(0, gap).toLocaleString('id-ID')}/bulan untuk capai target 20%. ${advice}`,
+          planName: 'Naik Tabungan ke 20%',
+          actionSteps: [
+            'Gunakan rumus 50/30/20: 50% kebutuhan, 30% keinginan, 20% tabungan',
+            `Potong 1 langganan tidak penting untuk tambah tabungan`,
+            'Set up auto-debit ke tabungan saat gajian'
+          ],
+          targetDate: 'Bulan ini'
+        });
+      } else {
+        insights.push({
+          id: 'insight-good-savings',
+          title: `🎉 Tabungan Excellent: ${savingsRate.toFixed(1)}%`,
+          tag: 'Tabungan',
+          isInternet: false,
+          description: `Dari penghasilan Rp ${totalIncome.toLocaleString('id-ID')}, Anda berhasil menyisihkan ${savingsRate.toFixed(1)}% = Rp ${currentSavings.toLocaleString('id-ID')}! Ini di atas target 20%. 💪 Maintain this dan pertimbangkan untuk mulai investasi.`,
+          planName: 'Pertahankan & Invest',
+          actionSteps: [
+            `Pertahankan savings rate minimal ${savingsRate.toFixed(0)}% setiap bulan`,
+            'Setelah dana darurat 6x expenses terpenuhi, mulai investasi',
+            'Pertimbangkan reksa dana index fund untuk jangka panjang'
+          ],
+          targetDate: '3 bulan'
+        });
+      }
     }
 
     // 5. Task Priority Analysis
@@ -1701,7 +1793,7 @@ export default function DashboardPage() {
         </nav>
 
         {activeView === 'analysis' && (
-          <div>
+          <>
             {/* Developer simulation controls banner */}
             {!supabase && (
               <div className="dev-simulation-panel">
@@ -2081,9 +2173,42 @@ export default function DashboardPage() {
 
             {/* Section: Special Insights Card (Maksimal 5) */}
             <section className="special-insights-section">
-              <h2 className="section-title" style={{ marginBottom: '20px', borderLeftColor: 'var(--color-purple)' }}>
-                <span>💡</span> Rekomendasi Insight Khusus & Tren Internet 2026
-              </h2>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <h2 className="section-title" style={{ marginBottom: 0, borderLeftColor: 'var(--color-purple)' }}>
+                  <span>💡</span> Rekomendasi & Analisis Data
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInsightsRefreshCountdown(3600); // Reset countdown
+                    setInsightsVersion(prev => prev + 1); // Force re-compute insights
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    background: insightsRefreshCountdown > 0 ? 'rgba(255,255,255,0.05)' : 'var(--color-primary)',
+                    border: '1px solid var(--border-glass)',
+                    borderRadius: '8px',
+                    color: insightsRefreshCountdown > 0 ? 'var(--text-muted)' : 'white',
+                    cursor: insightsRefreshCountdown > 0 ? 'not-allowed' : 'pointer',
+                    fontSize: '0.85rem',
+                    transition: 'all 0.2s ease',
+                  }}
+                  disabled={insightsRefreshCountdown > 0}
+                >
+                  🔄 Refresh
+                  <span style={{
+                    fontSize: '0.75rem',
+                    padding: '2px 6px',
+                    background: insightsRefreshCountdown > 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)',
+                    borderRadius: '4px',
+                  }}>
+                    {formatCountdown(insightsRefreshCountdown)}
+                  </span>
+                </button>
+              </div>
               {(!isDemo && rawTransactions.length === 0 && rawTodos.length === 0) ? (
                 <p className="insight-text" style={{ fontStyle: 'italic', textAlign: 'center', padding: '28px', background: 'var(--bg-card)', border: '1px dashed var(--border-glass)', borderRadius: '16px' }}>
                   Rekomendasi insight khusus belum tersedia. Masukkan data keuangan atau tugas Anda terlebih dahulu untuk memicu analisis cerdas dari asisten AI Anda.
@@ -2151,11 +2276,11 @@ export default function DashboardPage() {
                 </div>
               )}
             </section>
-          </div>
+          </>
         )}
 
         {activeView === 'data' && (
-          <div>
+          <>
             {/* Tab: Manajemen Data & Input */}
             <section className="manual-input-section">
               <div className="card" style={{ gap: '20px' }}>
@@ -2204,12 +2329,12 @@ export default function DashboardPage() {
 
                 <form onSubmit={handleFormSubmit} className="input-form">
                   {activeFormTab === 'money' ? (
-                    <div>
+                    <>
                       <div className="form-row">
                         <div className="form-group">
                           <label htmlFor="amount">Jumlah Uang (Rp)</label>
-                          <input
-                            type="number"
+                          <input 
+                            type="number" 
                             id="amount" 
                             className="form-control" 
                             value={mtAmount}
@@ -2373,9 +2498,9 @@ export default function DashboardPage() {
                           </button>
                         </div>
                       </div>
-                    </div>
+                    </>
                   ) : (
-                    <div>
+                    <>
                       <div className="form-row">
                         <div className="form-group">
                           <label htmlFor="task_name">Nama Tugas / To-Do</label>
@@ -2493,7 +2618,7 @@ export default function DashboardPage() {
                           </button>
                         </div>
                       </div>
-                    </div>
+                    </>
                   )}
 
                   <button
@@ -2582,7 +2707,7 @@ export default function DashboardPage() {
                       Belum ada data transaksi. Mulai chat dengan AI untuk mencatat transaksi!
                     </p>
                   ) : (
-                    <div>
+                    <>
                       {/* Filter & Sort Controls */}
                       <div style={{
                         display: 'flex',
@@ -2716,7 +2841,7 @@ export default function DashboardPage() {
                           Tidak ada transaksi yang cocok dengan filter.
                         </p>
                       ) : (
-                        <div>
+                        <>
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
                             Menampilkan {(() => {
                               let filtered = [...rawTransactions];
@@ -2911,8 +3036,7 @@ export default function DashboardPage() {
                           </div>
                         );
                       })()}
-                    </div>
-                    </div>
+                    </>
                   )}
                 </div>
               )}
@@ -2932,7 +3056,7 @@ export default function DashboardPage() {
                       Belum ada tugas. Mulai chat dengan AI untuk mencatat tugas!
                     </p>
                   ) : (
-                    <div>
+                    <>
                       {/* Filter & Sort Controls for Todos */}
                       <div style={{
                         display: 'flex',
@@ -3058,7 +3182,7 @@ export default function DashboardPage() {
                           Tidak ada tugas yang cocok dengan filter.
                         </p>
                       ) : (
-                        <div>
+                        <>
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
                             Menampilkan {(() => {
                               let filtered = [...rawTodos];
@@ -3153,12 +3277,12 @@ export default function DashboardPage() {
                                   </td>
                                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                                     {todo.pengingat ? (
-                                      <div>
+                                      <>
                                         <div>{new Date(todo.pengingat).toLocaleDateString('id-ID')}</div>
                                         <div style={{ fontSize: '0.8rem', opacity: 0.8, color: 'var(--color-warning)' }}>
                                           🔔 {todo.pengingat.slice(11, 16)}
                                         </div>
-                                      </div>
+                                      </>
                                     ) : '-'}
                                   </td>
                                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
@@ -3283,12 +3407,12 @@ export default function DashboardPage() {
                           </div>
                         );
                       })()}
-                    </div>
+                    </>
                   )}
                 </div>
               )}
             </div>
-          </div>
+          </>
         )}
 
       </main>
