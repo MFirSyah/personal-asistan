@@ -352,9 +352,9 @@ export default function DashboardPage() {
   const loadMockData = () => {
     setIsLoading(true);
     let initialProfile = {
-      fullname: 'Budi Santoso (Demo)',
-      assistant_name: 'Jarvis (Vibe Stoic)',
-      user_nickname: 'Budi',
+      fullname: 'Firman (Demo)',
+      assistant_name: 'YUI (Vibe Stoic)',
+      user_nickname: 'Firman',
       selected_personality: 'stoic_strategist'
     };
 
@@ -432,7 +432,7 @@ export default function DashboardPage() {
       { id: '3', amount: 8500000, type: 'income', description: 'gaji bulanan', transaction_date: '2026-06-01', dynamic_metadata: { kategori: 'gaji', jam: '08:00' } },
     ];
     const initialTodos = [
-      { id: '1', task_name: 'Selesaikan Laporan Pajak', status: 'pending', due_date: '2026-06-23', dynamic_metadata: { priority: 'high', category: 'keuangan', jam: '09:00' } },
+      { id: '1', task_name: 'Selesaikan Laporan Pajak', status: 'pending', due_date: '2026-06-23', waktu_mulai: '2026-06-21T09:00', pengingat: '2026-06-22T08:00', dynamic_metadata: { priority: 'high', category: 'keuangan', jam: '09:00' } },
       { id: '2', task_name: 'Revisi Pitch Deck', status: 'pending', due_date: '2026-06-24', dynamic_metadata: { priority: 'medium', category: 'kerja', jam: '14:30' } },
       { id: '3', task_name: 'Olahraga Sore', status: 'completed', due_date: '2026-06-20', dynamic_metadata: { priority: 'low', energy_required: 'sedang', jam: '17:15' } },
     ];
@@ -451,7 +451,7 @@ export default function DashboardPage() {
   const fetchDashboardData = async (client: any, user: any) => {
     const { data: uProfile } = await client
       .from('user_profiles')
-      .select('fullname, assistant_name, user_nickname, selected_personality, dynamic_metadata, created_at')
+      .select('*')
       .eq('id', user.id)
       .maybeSingle();
     
@@ -465,7 +465,7 @@ export default function DashboardPage() {
 
     const { data: cache } = await client
       .from('ai_insights_cache')
-      .select('insight_type, cached_reply, sources_metadata')
+      .select('*')
       .eq('user_id', user.id);
 
     if (cache) {
@@ -513,6 +513,7 @@ export default function DashboardPage() {
     }
   };
 
+  // MAIN EFFECT: Auth, Fetching, and Event Listeners (including postMessage)
   useEffect(() => {
     const isDemoModeToken = typeof window !== 'undefined' && localStorage.getItem('is_demo_mode') === 'true';
     if (isDemoModeToken) {
@@ -598,6 +599,47 @@ export default function DashboardPage() {
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, []);
+
+  // --- SOLUSI DATA SCIENCE: REALTIME WEBSOCKET SUBSCRIPTION ---
+  // Menerapkan prinsip autonomous tanpa harus merefresh manual
+  useEffect(() => {
+    if (!supabase || !isAuthenticated || isDemoMode) return;
+
+    let channelRef: any = null;
+
+    const setupRealtimeSync = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      channelRef = supabase.channel('realtime-dashboard-updates')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'todo_lists', filter: `user_id=eq.${session.user.id}` },
+          (payload: any) => {
+            console.log('[Realtime] AI/System updated ToDo list! Memperbarui data...', payload);
+            fetchDashboardData(supabase, session.user);
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'money_trackers', filter: `user_id=eq.${session.user.id}` },
+          (payload: any) => {
+            console.log('[Realtime] AI/System updated Money Tracker! Memperbarui data...', payload);
+            fetchDashboardData(supabase, session.user);
+          }
+        )
+        .subscribe();
+    };
+
+    setupRealtimeSync();
+
+    return () => {
+      if (channelRef) {
+        supabase.removeChannel(channelRef);
+      }
+    };
+  }, [supabase, isAuthenticated, isDemoMode]);
+  // -------------------------------------------------------------
 
   const initSession = async (client: any, accessToken: string, refreshToken: string) => {
     setIsLoading(true);
@@ -759,20 +801,6 @@ export default function DashboardPage() {
             setRawTransactions(updatedTxs);
             recomputeLocalInsights(updatedTxs, rawTodos);
           }
-
-          try {
-            const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
-            await fetch('/api/internal/recompute-insight', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-jarvis-gateway-key': gatewayKey,
-              },
-              body: JSON.stringify({ record: { user_id: user.id } }),
-            });
-          } catch (apiErr) {
-            console.error('Failed to trigger insight recompute:', apiErr);
-          }
         }
       } catch (err) {
         console.error('Error deleting transaction:', err);
@@ -808,20 +836,6 @@ export default function DashboardPage() {
             setRawTodos(updatedTodos);
             recomputeLocalInsights(rawTransactions, updatedTodos);
           }
-
-          try {
-            const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
-            await fetch('/api/internal/recompute-insight', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-jarvis-gateway-key': gatewayKey,
-              },
-              body: JSON.stringify({ record: { user_id: user.id } }),
-            });
-          } catch (apiErr) {
-            console.error('Failed to trigger insight recompute:', apiErr);
-          }
         }
       } catch (err) {
         console.error('Error deleting todo:', err);
@@ -854,20 +868,6 @@ export default function DashboardPage() {
           if (updatedTodos) {
             setRawTodos(updatedTodos);
             recomputeLocalInsights(rawTransactions, updatedTodos);
-          }
-
-          try {
-            const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
-            await fetch('/api/internal/recompute-insight', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-jarvis-gateway-key': gatewayKey,
-              },
-              body: JSON.stringify({ record: { user_id: user.id } }),
-            });
-          } catch (apiErr) {
-            console.error('Failed to trigger insight recompute:', apiErr);
           }
         }
       } catch (err) {
@@ -1142,28 +1142,6 @@ export default function DashboardPage() {
       });
     }
 
-    if (rawTransactions.length >= 10 && sortedExpenses.length >= 3) {
-      const avgExpense = totalExpense / sortedExpenses.length;
-      const highExpenses = sortedExpenses.filter(e => Number(e.amount) > avgExpense);
-
-      if (highExpenses.length > 0) {
-        insights.push({
-          id: 'insight-expense-pattern',
-          title: 'Pola Pengeluaran Tidak Merata',
-          tag: 'Anti-Boros',
-          isInternet: false,
-          description: `Dari ${rawTransactions.filter(t => t.type === 'expense').length} transaksi pengeluaran, ${highExpenses.length} di antaranya tergolong besar (di atas rata-rata Rp ${Math.round(avgExpense).toLocaleString()}). Ini mengindikasikan pola pengeluaran tidak merata.`,
-          planName: 'Ratakan Pola Pengeluaran',
-          actionSteps: [
-            'Buat anggaran bulanan per kategori',
-            'Catat setiap transaksi untuk kesadaran',
-            'Kurangi pengeluaran besar yang berulang'
-          ],
-          targetDate: 'Bulan ini'
-        });
-      }
-    }
-
     return insights.slice(0, 5);
   };
 
@@ -1235,20 +1213,6 @@ export default function DashboardPage() {
 
           if (error) throw error;
 
-          try {
-            const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
-            await fetch('/api/internal/recompute-insight', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-jarvis-gateway-key': gatewayKey,
-              },
-              body: JSON.stringify({ record: { user_id: user.id } }),
-            });
-          } catch (apiErr) {
-            console.error('Failed to trigger insight recompute:', apiErr);
-          }
-
           const { data: updatedTxs } = await supabase
             .from('money_trackers')
             .select('*')
@@ -1257,18 +1221,6 @@ export default function DashboardPage() {
             .limit(50);
           if (updatedTxs) setRawTransactions(updatedTxs);
 
-          const { data: cache } = await supabase
-            .from('ai_insights_cache')
-            .select('insight_type, cached_reply, sources_metadata')
-            .eq('user_id', user.id);
-
-          if (cache) {
-            const map: Record<string, Insight> = {};
-            cache.forEach((item: Insight) => {
-              map[item.insight_type] = item;
-            });
-            setInsights(map);
-          }
         } else {
           if (receiptPreview) {
             finalMetadata = { ...finalMetadata, receipt_url: receiptPreview };
@@ -1320,20 +1272,6 @@ export default function DashboardPage() {
 
           if (error) throw error;
 
-          try {
-            const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
-            await fetch('/api/internal/recompute-insight', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-jarvis-gateway-key': gatewayKey,
-              },
-              body: JSON.stringify({ record: { user_id: user.id } }),
-            });
-          } catch (apiErr) {
-            console.error('Failed to trigger insight recompute:', apiErr);
-          }
-
           const { data: updatedTodos } = await supabase
             .from('todo_lists')
             .select('*')
@@ -1342,18 +1280,6 @@ export default function DashboardPage() {
             .limit(50);
           if (updatedTodos) setRawTodos(updatedTodos);
 
-          const { data: cache } = await supabase
-            .from('ai_insights_cache')
-            .select('insight_type, cached_reply, sources_metadata')
-            .eq('user_id', user.id);
-
-          if (cache) {
-            const map: Record<string, Insight> = {};
-            cache.forEach((item: Insight) => {
-              map[item.insight_type] = item;
-            });
-            setInsights(map);
-          }
         } else {
           const simulatedTodo = {
             id: String(Date.now()),
@@ -3100,7 +3026,9 @@ export default function DashboardPage() {
                                   <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Nama Tugas</th>
                                   <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Status</th>
                                   <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Waktu Mulai</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Tenggat Akhir</th>
                                   <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Pengingat</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Atribut Tambahan (AI)</th>
                                   <th style={{ padding: '12px 16px', textAlign: 'center', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Aksi</th>
                                 </tr>
                               </thead>
@@ -3134,79 +3062,118 @@ export default function DashboardPage() {
                                     return todoSortOrder === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
                                   });
                                   return filtered;
-                                })().slice((currentTodoPage - 1) * 10, currentTodoPage * 10).map((todo: any, idx: number) => (
-                                  <tr key={todo.id || idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                                    <td style={{ padding: '12px 16px', fontWeight: 500 }}>
-                                      {todo.task_name}
-                                    </td>
-                                    <td style={{ padding: '12px 16px' }}>
-                                      <span style={{
-                                        padding: '4px 10px',
-                                        borderRadius: '20px',
-                                        fontSize: '0.75rem',
-                                        background: todo.status === 'completed' ? 'rgba(16,185,129,0.12)' : todo.status === 'cancelled' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
-                                        color: todo.status === 'completed' ? 'var(--color-success)' : todo.status === 'cancelled' ? 'var(--color-danger)' : 'var(--color-warning)',
-                                        fontWeight: 600
-                                      }}>
-                                        {todo.status === 'completed' ? '✅ Selesai' : todo.status === 'cancelled' ? '❌ Batal' : '⏳ Tertunda'}
-                                      </span>
-                                    </td>
-                                    <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                                      <div>{todo.waktu_mulai ? new Date(todo.waktu_mulai).toLocaleDateString('id-ID') : (todo.due_date ? new Date(todo.due_date).toLocaleDateString('id-ID') : '-')}</div>
-                                      {(todo.waktu_mulai || todo.dynamic_metadata?.jam) && (
-                                        <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
-                                          🕒 {todo.waktu_mulai ? todo.waktu_mulai.slice(11, 16) : todo.dynamic_metadata?.jam}
+                                })().slice((currentTodoPage - 1) * 10, currentTodoPage * 10).map((todo: any, idx: number) => {
+                                  // --- SMART EXTRACTOR ---
+                                  // Cek apakah data ada di root atau disembunyikan AI di dynamic_metadata
+                                  const wMulai = todo.waktu_mulai || todo.dynamic_metadata?.waktu_mulai || '-';
+                                  const wBerakhir = todo.waktu_berakhir || todo.due_date || todo.dynamic_metadata?.waktu_berakhir || todo.dynamic_metadata?.due_date || '-';
+                                  const pengingat = todo.pengingat || todo.dynamic_metadata?.pengingat || '-';
+                                  
+                                  return (
+                                    <tr key={todo.id || idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                                      <td style={{ padding: '12px 16px', fontWeight: 500 }}>
+                                        {todo.task_name}
+                                      </td>
+                                      <td style={{ padding: '12px 16px' }}>
+                                        <span style={{
+                                          padding: '4px 10px',
+                                          borderRadius: '20px',
+                                          fontSize: '0.75rem',
+                                          background: todo.status === 'completed' ? 'rgba(16,185,129,0.12)' : todo.status === 'cancelled' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
+                                          color: todo.status === 'completed' ? 'var(--color-success)' : todo.status === 'cancelled' ? 'var(--color-danger)' : 'var(--color-warning)',
+                                          fontWeight: 600
+                                        }}>
+                                          {todo.status === 'completed' ? '✅ Selesai' : todo.status === 'cancelled' ? '❌ Batal' : '⏳ Tertunda'}
+                                        </span>
+                                      </td>
+                                      
+                                      <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                        <div style={{ color: 'var(--color-primary)' }}>
+                                          {wMulai !== '-' ? new Date(wMulai).toLocaleDateString('id-ID') : '-'}
                                         </div>
-                                      )}
-                                    </td>
-                                    <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                                      {todo.pengingat ? (
-                                        <div className="fragment-wrapper">
-                                          <div>{new Date(todo.pengingat).toLocaleDateString('id-ID')}</div>
-                                          <div style={{ fontSize: '0.8rem', opacity: 0.8, color: 'var(--color-warning)' }}>
-                                            🔔 {todo.pengingat.slice(11, 16)}
+                                        {wMulai !== '-' && (
+                                          <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
+                                            🕒 {new Date(wMulai).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'})}
                                           </div>
+                                        )}
+                                      </td>
+                                      
+                                      <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                        <div style={{ color: 'var(--color-danger)' }}>
+                                          {wBerakhir !== '-' ? new Date(wBerakhir).toLocaleDateString('id-ID') : '-'}
                                         </div>
-                                      ) : '-'}
-                                    </td>
-                                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
-                                        <select
-                                          value={todo.status}
-                                          onChange={(e) => handleUpdateTodoStatus(todo.id, e.target.value as any)}
-                                          style={{
-                                            padding: '6px 10px',
-                                            background: 'var(--color-surface)',
-                                            border: '1px solid var(--color-border)',
-                                            borderRadius: '6px',
-                                            color: 'var(--text-primary)',
-                                            cursor: 'pointer',
-                                            fontSize: '0.75rem',
-                                          }}
-                                        >
-                                          <option value="pending">Tertunda</option>
-                                          <option value="completed">Selesai</option>
-                                          <option value="cancelled">Batal</option>
-                                        </select>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDeleteTodo(todo.id)}
-                                          style={{
-                                            background: 'rgba(239, 68, 68, 0.1)',
-                                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                                            color: 'var(--color-danger)',
-                                            padding: '6px 10px',
-                                            borderRadius: '6px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.75rem',
-                                          }}
-                                        >
-                                          🗑️
-                                        </button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ))}
+                                        {wBerakhir !== '-' && (
+                                          <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
+                                            🕒 {new Date(wBerakhir).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'})}
+                                          </div>
+                                        )}
+                                      </td>
+                                      
+                                      <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                        <div style={{ color: 'var(--color-warning)' }}>
+                                          {pengingat !== '-' ? new Date(pengingat).toLocaleDateString('id-ID') : '-'}
+                                        </div>
+                                        {pengingat !== '-' && (
+                                          <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
+                                            🔔 {new Date(pengingat).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'})}
+                                          </div>
+                                        )}
+                                      </td>
+
+                                      <td style={{ padding: '12px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                        {todo.dynamic_metadata && Object.keys(todo.dynamic_metadata).length > 0 ? (
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            {Object.entries(todo.dynamic_metadata)
+                                              // Filter out the keys we already displayed manually so they don't double print
+                                              .filter(([k]) => !['waktu_mulai', 'waktu_berakhir', 'due_date', 'pengingat', 'jam'].includes(k.toLowerCase()))
+                                              .map(([k, v]) => (
+                                                <div key={k} style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }}>
+                                                  <strong style={{textTransform: 'capitalize'}}>{k}:</strong> {String(v)}
+                                                </div>
+                                              ))}
+                                          </div>
+                                        ) : '-'}
+                                      </td>
+
+                                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                                          <select
+                                            value={todo.status}
+                                            onChange={(e) => handleUpdateTodoStatus(todo.id, e.target.value as any)}
+                                            style={{
+                                              padding: '6px 10px',
+                                              background: 'var(--color-surface)',
+                                              border: '1px solid var(--color-border)',
+                                              borderRadius: '6px',
+                                              color: 'var(--text-primary)',
+                                              cursor: 'pointer',
+                                              fontSize: '0.75rem',
+                                            }}
+                                          >
+                                            <option value="pending">Tertunda</option>
+                                            <option value="completed">Selesai</option>
+                                            <option value="cancelled">Batal</option>
+                                          </select>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteTodo(todo.id)}
+                                            style={{
+                                              background: 'rgba(239, 68, 68, 0.1)',
+                                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                                              color: 'var(--color-danger)',
+                                              padding: '6px 10px',
+                                              borderRadius: '6px',
+                                              cursor: 'pointer',
+                                              fontSize: '0.75rem',
+                                            }}
+                                          >
+                                            🗑️
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -3333,7 +3300,7 @@ export default function DashboardPage() {
                       <input 
                         type="text" 
                         className="form-control" 
-                        value={supabase ? "budi.santoso@example.com" : "budi.santoso.demo@simulasi.local"}
+                        value={supabase ? "Terhubung ke Database" : "budi.santoso.demo@simulasi.local"}
                         disabled
                         style={{ opacity: 0.6, cursor: 'not-allowed' }}
                       />
@@ -3587,7 +3554,7 @@ export default function DashboardPage() {
                     <th>Tipe</th>
                     <th>Jumlah</th>
                     <th>Tanggal</th>
-                    <th>Properti Kognitif (Metadata)</th>
+                    <th>Properti Tambahan (Metadata)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3637,29 +3604,36 @@ export default function DashboardPage() {
                   <tr>
                     <th>Nama Tugas / To-Do</th>
                     <th>Status</th>
-                    <th>Tenggat Waktu</th>
-                    <th>Properti Kognitif (Metadata)</th>
+                    <th>Waktu Mulai</th>
+                    <th>Waktu Akhir / Tenggat</th>
+                    <th>Properti Tambahan (Metadata)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rawTodos.map((todo: any, idx: number) => (
+                  {rawTodos.map((todo: any, idx: number) => {
+                    const wMulai = todo.waktu_mulai || todo.dynamic_metadata?.waktu_mulai || '-';
+                    const wBerakhir = todo.waktu_berakhir || todo.due_date || todo.dynamic_metadata?.waktu_berakhir || todo.dynamic_metadata?.due_date || '-';
+                    
+                    return (
                     <tr key={todo.id || idx}>
                       <td style={{ fontWeight: 'bold' }}>{todo.task_name}</td>
                       <td>
                         {todo.status === 'completed' ? 'Selesai' : todo.status === 'cancelled' ? 'Batal' : 'Tertunda'}
                       </td>
-                      <td>{todo.due_date || '-'} {todo.dynamic_metadata?.jam ? `(${todo.dynamic_metadata.jam})` : ''}</td>
+                      <td>{wMulai !== '-' ? new Date(wMulai).toLocaleDateString('id-ID') : '-'}</td>
+                      <td>{wBerakhir !== '-' ? new Date(wBerakhir).toLocaleDateString('id-ID') : '-'}</td>
                       <td>
                         {todo.dynamic_metadata && Object.keys(todo.dynamic_metadata).length > 0 ? (
                           Object.entries(todo.dynamic_metadata)
-                            .filter(([k]) => k !== 'long_term_memory')
+                            .filter(([k]) => !['long_term_memory', 'waktu_mulai', 'waktu_berakhir', 'due_date', 'pengingat'].includes(k.toLowerCase()))
                             .map(([k, v]) => (
                               <span key={k} className="print-meta-tag">{k}: {String(v)}</span>
                             ))
                         ) : '-'}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             )}
