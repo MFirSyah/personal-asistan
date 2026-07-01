@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase Client
@@ -227,7 +227,6 @@ export default function DashboardPage() {
     const loadReply = `Beban Kerja Harian:\nHari ini ada ${pendingCount} tugas aktif yang harus diselesaikan. ${pendingCount > 3 ? 'Beban kerja cukup tinggi, istirahatlah yang cukup!' : 'Beban kerja ringan, luangkan waktu untuk bersantai.'}`;
 
     // ========== NEW: Time-based calculations for additional insights ==========
-    // Group transactions by time periods (Pagi: 05-12, Siang: 12-17, Malam: 17-05)
     let spendPagi = 0;
     let spendSiang = 0;
     let spendMalam = 0;
@@ -245,7 +244,6 @@ export default function DashboardPage() {
 
     const nightSpendingPercent = totalExpensesForTime > 0 ? Math.round((spendMalam / totalExpensesForTime) * 100) : 0;
 
-    // Group tasks by time periods
     let tasksPagi = 0;
     let tasksSiang = 0;
     let tasksMalam = 0;
@@ -261,7 +259,7 @@ export default function DashboardPage() {
     const totalTasksWithTime = tasksPagi + tasksSiang + tasksMalam;
 
     // 6. Runway Prediction
-    const savingsBalance = 15000000; // Asumsi saldo tabungan darurat
+    const savingsBalance = 15000000;
     const monthlyExpense = totalExpense > 0 ? totalExpense : 500000;
     const runwayMonths = monthlyExpense > 0 ? (savingsBalance / monthlyExpense) : 12;
     const runwayReply = `Dengan saldo tabungan tabungan Rp ${savingsBalance.toLocaleString('id-ID')} dan pengeluaran rata-rata Rp ${monthlyExpense.toLocaleString('id-ID')}, dana darurat Anda bertahan selama ${runwayMonths.toFixed(1)} bulan jika terjadi kehilangan pendapatan. ${runwayMonths < 3 ? '⚠️ Peringatan: Dana darurat sangat tipis, segera tingkatkan tabungan!' : runwayMonths < 6 ? 'Dana darurat perlu ditingkatkan.' : 'Dana darurat Anda dalam kondisi aman.'}`;
@@ -284,7 +282,6 @@ export default function DashboardPage() {
     const morningProductivity = totalTasksWithTime > 0 ? Math.round((tasksPagi / totalTasksWithTime) * 100) : 33;
     const afternoonProductivity = Math.max(20, 100 - morningProductivity - 15);
     const eveningProductivity = Math.max(10, 100 - morningProductivity - afternoonProductivity);
-    const peakTime = tasksPagi >= tasksSiang && tasksPagi >= tasksMalam ? 'pagi hari' : tasksMalam > tasksPagi ? 'malam hari' : 'siang hari';
     const moodProdReply = `Korelasi Mood & Produktivitas: Produktivitas Anda di pagi hari ~${morningProductivity}%, siang ~${afternoonProductivity}%, malam ~${eveningProductivity}%. ${tasksPagi >= tasksSiang && tasksPagi >= tasksMalam ? 'Anda bekerja sangat efektif di pagi hari - jadwalkan tugas berat di jam-jam ini.' : tasksMalam >= tasksPagi ? 'Anda lebih produktif dan kreatif di malam hari. Manfaatkan waktu ini untuk tugas yang membutuhkan fokus tinggi.' : 'Produktivitas Anda merata sepanjang hari.'}`;
 
     // 11. Worth-It Score Audit
@@ -319,7 +316,6 @@ export default function DashboardPage() {
         insight_type: 'daily_activity_load',
         cached_reply: loadReply
       },
-      // NEW: Additional insights
       runway_prediction: {
         insight_type: 'runway_prediction',
         cached_reply: runwayReply,
@@ -353,7 +349,6 @@ export default function DashboardPage() {
     }));
   };
 
-  // Mock data fallback for developer simulation mode
   const loadMockData = () => {
     setIsLoading(true);
     let initialProfile = {
@@ -479,12 +474,8 @@ export default function DashboardPage() {
         map[item.insight_type] = item;
       });
       setInsights(map);
-    } else {
-      // If no cache, compute local insights immediately
-      // Will be recomputed by server via trigger, but show data now
     }
 
-    // Fetch Raw Transactions for Dynamic Form fields scanning
     const { data: mtData } = await client
       .from('money_trackers')
       .select('*')
@@ -493,7 +484,6 @@ export default function DashboardPage() {
       .limit(50);
     if (mtData) setRawTransactions(mtData);
 
-    // Fetch Raw Todos for Dynamic Form fields scanning
     const { data: todoData } = await client
       .from('todo_lists')
       .select('*')
@@ -502,14 +492,12 @@ export default function DashboardPage() {
       .limit(50);
     if (todoData) setRawTodos(todoData);
 
-    // After fetching transactions and todos, compute local insights if cache was empty
     const txData = mtData || [];
     const todoDataList = todoData || [];
     if (txData.length > 0 || todoDataList.length > 0) {
       recomputeLocalInsights(txData, todoDataList);
     }
 
-    // Trigger server recompute in background (this populates the cache)
     try {
       const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
       fetch('/api/internal/recompute-insight', {
@@ -523,9 +511,9 @@ export default function DashboardPage() {
     } catch (recomputeErr) {
       console.warn('Background insight recompute failed:', recomputeErr);
     }
+  };
 
   useEffect(() => {
-    // Check if we are in demo mode
     const isDemoModeToken = typeof window !== 'undefined' && localStorage.getItem('is_demo_mode') === 'true';
     if (isDemoModeToken) {
       setIsDemoMode(true);
@@ -534,7 +522,6 @@ export default function DashboardPage() {
     }
     setIsDemoMode(false);
 
-    // Check if accessing from mobile app
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       setIsFromMobile(params.get('from') === 'mobile');
@@ -550,16 +537,14 @@ export default function DashboardPage() {
       return;
     }
 
-    // Safely check active session from client
     client.auth.getSession().then(async ({ data: { session } }: any) => {
       if (session) {
-        setIsDemoMode(false); // Real authenticated user
+        setIsDemoMode(false);
         localStorage.setItem('access_token', session.access_token);
         localStorage.setItem('refresh_token', session.refresh_token);
         setIsAuthenticated(true);
         try {
           await fetchDashboardData(client, session.user);
-          // Fetch morning briefing
           try {
             const bRes = await fetch('/api/v1/briefing', {
               headers: {
@@ -583,7 +568,6 @@ export default function DashboardPage() {
           setIsLoading(false);
         }
       } else {
-        // Fallback to local storage keys
         const access = localStorage.getItem('access_token');
         const refresh = localStorage.getItem('refresh_token');
         if (access && refresh) {
@@ -597,7 +581,6 @@ export default function DashboardPage() {
       setIsLoading(false);
     });
 
-    // 1. Listen to postMessage session tokens from Flutter WebView
     const handleMessage = async (event: MessageEvent) => {
       try {
         const { type, access_token, refresh_token } = event.data || {};
@@ -680,12 +663,10 @@ export default function DashboardPage() {
   };
 
   const handleDeletePlan = async (planId: string) => {
-    // Find the plan first before filtering
     const planToDelete = futurePlans.find(p => p.id === planId);
     const updatedPlans = futurePlans.filter(p => p.id !== planId);
     setFuturePlans(updatedPlans);
 
-    // Also unmark this insight from planned list
     const insightIdToRemove = planId;
     const insightGeneratedId = planToDelete ? `insight-${planToDelete.name?.toLowerCase().replace(/\s+/g, '-')}` : null;
     setPlannedInsightIds(prev => prev.filter(id => id !== insightIdToRemove && id !== insightGeneratedId));
@@ -737,7 +718,6 @@ export default function DashboardPage() {
         if (error) throw error;
       }
 
-      // Update local state for both Supabase and Simulation mode
       setProfile((prev: any) => ({
         ...prev,
         fullname: editFullname.trim(),
@@ -767,7 +747,6 @@ export default function DashboardPage() {
           .eq('id', id);
         if (error) throw error;
 
-        // Refresh data
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data: updatedTxs } = await supabase
@@ -778,11 +757,9 @@ export default function DashboardPage() {
             .limit(50);
           if (updatedTxs) {
             setRawTransactions(updatedTxs);
-            // Recompute local insights to update state instantly
             recomputeLocalInsights(updatedTxs, rawTodos);
           }
 
-          // Trigger server recompute
           try {
             const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
             await fetch('/api/internal/recompute-insight', {
@@ -802,7 +779,6 @@ export default function DashboardPage() {
         alert('Gagal menghapus transaksi dari database');
       }
     } else {
-      // Simulation mode
       const updatedTxs = rawTransactions.filter(t => t.id !== id);
       setRawTransactions(updatedTxs);
       recomputeLocalInsights(updatedTxs, rawTodos);
@@ -820,7 +796,6 @@ export default function DashboardPage() {
           .eq('id', id);
         if (error) throw error;
 
-        // Refresh data
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data: updatedTodos } = await supabase
@@ -834,7 +809,6 @@ export default function DashboardPage() {
             recomputeLocalInsights(rawTransactions, updatedTodos);
           }
 
-          // Trigger server recompute
           try {
             const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
             await fetch('/api/internal/recompute-insight', {
@@ -854,7 +828,6 @@ export default function DashboardPage() {
         alert('Gagal menghapus tugas dari database');
       }
     } else {
-      // Simulation mode
       const updatedTodos = rawTodos.filter(t => t.id !== id);
       setRawTodos(updatedTodos);
       recomputeLocalInsights(rawTransactions, updatedTodos);
@@ -870,7 +843,6 @@ export default function DashboardPage() {
           .eq('id', id);
         if (error) throw error;
 
-        // Refresh data
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data: updatedTodos } = await supabase
@@ -884,7 +856,6 @@ export default function DashboardPage() {
             recomputeLocalInsights(rawTransactions, updatedTodos);
           }
 
-          // Trigger server recompute
           try {
             const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
             await fetch('/api/internal/recompute-insight', {
@@ -904,17 +875,13 @@ export default function DashboardPage() {
         alert('Gagal memperbarui status tugas di database');
       }
     } else {
-      // Simulation mode
       const updatedTodos = rawTodos.map(t => t.id === id ? { ...t, status: newStatus } : t);
       setRawTodos(updatedTodos);
       recomputeLocalInsights(rawTransactions, updatedTodos);
     }
   };
 
-  // Dynamic Special Insights - analyzes actual user data
-  // insightsVersion is used as dependency to force re-computation on refresh
   const getSpecialInsights = () => {
-    // Use insightsVersion to trigger re-computation
     void insightsVersion;
 
     const insights: Array<{
@@ -928,7 +895,6 @@ export default function DashboardPage() {
       targetDate: string;
     }> = [];
 
-    // Calculate metrics from raw data
     const totalIncome = rawTransactions
       .filter(t => t.type === 'income')
       .reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -944,7 +910,6 @@ export default function DashboardPage() {
       ? Math.round((completedTodos.length / rawTodos.length) * 100)
       : 100;
 
-    // Calculate time-based metrics
     const parseHour = (item: any): number => {
       const jam = item.dynamic_metadata?.jam || '';
       if (!jam) return -1;
@@ -972,13 +937,11 @@ export default function DashboardPage() {
       ? Math.round((spendMalam / totalExpenseForTime) * 100)
       : 0;
 
-    // Find largest expense
     const sortedExpenses = rawTransactions
       .filter(t => t.type === 'expense')
       .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
     const largestExpense = sortedExpenses[0];
 
-    // Find highest category of spending
     const categorySpending: Record<string, number> = {};
     rawTransactions.filter(t => t.type === 'expense').forEach(t => {
       const kat = t.dynamic_metadata?.kategori || 'Lainnya';
@@ -987,7 +950,6 @@ export default function DashboardPage() {
     const topCategory = Object.entries(categorySpending)
       .sort((a, b) => b[1] - a[1])[0];
 
-    // 1. Largest Expense Analysis (only if we have transactions)
     if (largestExpense) {
       const largestPercent = totalExpense > 0 ? Math.round((Number(largestExpense.amount) / totalExpense) * 100) : 0;
       const isLargeExpense = largestPercent > 30;
@@ -997,7 +959,7 @@ export default function DashboardPage() {
 
       if (largestPercent > 50) {
         urgencyLevel = 'kritis';
-        nextStep = `Pengeluaran ini 占 ${largestPercent}% dari total! Sangat direkomendasikan untuk evaluasi mendalam.`;
+        nextStep = `Pengeluaran ini mengambil ${largestPercent}% dari total! Sangat direkomendasikan untuk evaluasi mendalam.`;
       } else if (largestPercent > 30) {
         urgencyLevel = 'perlu perhatian';
         nextStep = 'Sebaiknya buat anggaran khusus untuk kategori ini.';
@@ -1019,7 +981,6 @@ export default function DashboardPage() {
       });
     }
 
-    // 2. Top Spending Category - Detailed Analysis
     if (topCategory) {
       const [category, amount] = topCategory;
       if (category !== 'Lainnya' && amount > 0) {
@@ -1059,7 +1020,6 @@ export default function DashboardPage() {
       }
     }
 
-    // 3. Night Spending Warning - Data-Driven Analysis
     if (nightSpendingPercent > 0 && rawTransactions.length > 0) {
       const spendMalamAmount = rawTransactions.filter(t => {
         const hr = parseHour(t);
@@ -1074,7 +1034,7 @@ export default function DashboardPage() {
         recommendation = 'Sebagian besar pengeluaran terjadi di malam hari. Risiko belanja impulsif meningkat saat malam karena menurunnya kemampuan membuat keputusan rasional.';
       } else if (nightSpendingPercent > 25) {
         warningLevel = 'sedang';
-        recommendation = 'Terdapat kecenderungan belanja di malam hari. Perhatikan apakah ini冲动购物 (belanja impulsif) atau kebutuhan sebenarnya.';
+        recommendation = 'Terdapat kecenderungan belanja di malam hari. Perhatikan apakah ini belanja impulsif atau kebutuhan sebenarnya.';
       }
 
       insights.push({
@@ -1093,7 +1053,6 @@ export default function DashboardPage() {
       });
     }
 
-    // 4. Savings Rate Analysis - Comprehensive
     if (totalIncome > 0) {
       const targetSavings = Math.round(totalIncome * 0.2);
       const currentSavings = Math.max(0, netSavings);
@@ -1105,7 +1064,7 @@ export default function DashboardPage() {
 
         if (savingsRate < 5) {
           severity = 'parah';
-          advice = 'Pola saat ini unsustainable. Immediate action diperlukan!';
+          advice = 'Pola saat ini tidak berkelanjutan. Tindakan segera diperlukan!';
         } else if (savingsRate < 10) {
           severity = 'sedang';
           advice = 'Tabungan sangat minim. Perlu strategi agresif.';
@@ -1116,34 +1075,33 @@ export default function DashboardPage() {
           title: `Tabungan: ${savingsRate.toFixed(1)}% (Target: 20%)`,
           tag: 'Tabungan',
           isInternet: false,
-          description: `Dari penghasilan Rp ${totalIncome.toLocaleString('id-ID')}/bulan, Anda mengeluarkan Rp ${totalExpense.toLocaleString('id-ID')} dan menabung Rp ${currentSavings.toLocaleString('id-ID')} (${savingsRate.toFixed(1)}%). Severity: ${severity}. Anda perlu tambahan Rp ${Math.max(0, gap).toLocaleString('id-ID')}/bulan untuk capai target 20%. ${advice}`,
+          description: `Dari penghasilan Rp ${totalIncome.toLocaleString('id-ID')}/bulan, Anda mengeluarkan Rp ${totalExpense.toLocaleString('id-ID')} dan menabung Rp ${currentSavings.toLocaleString('id-ID')} (${savingsRate.toFixed(1)}%). Tingkat keparahan: ${severity}. Anda perlu tambahan Rp ${Math.max(0, gap).toLocaleString('id-ID')}/bulan untuk capai target 20%. ${advice}`,
           planName: 'Naik Tabungan ke 20%',
           actionSteps: [
             'Gunakan rumus 50/30/20: 50% kebutuhan, 30% keinginan, 20% tabungan',
             `Potong 1 langganan tidak penting untuk tambah tabungan`,
-            'Set up auto-debit ke tabungan saat gajian'
+            'Atur auto-debit ke tabungan saat gajian'
           ],
           targetDate: 'Bulan ini'
         });
       } else {
         insights.push({
           id: 'insight-good-savings',
-          title: `🎉 Tabungan Excellent: ${savingsRate.toFixed(1)}%`,
+          title: `🎉 Tabungan Cemerlang: ${savingsRate.toFixed(1)}%`,
           tag: 'Tabungan',
           isInternet: false,
-          description: `Dari penghasilan Rp ${totalIncome.toLocaleString('id-ID')}, Anda berhasil menyisihkan ${savingsRate.toFixed(1)}% = Rp ${currentSavings.toLocaleString('id-ID')}! Ini di atas target 20%. 💪 Maintain this dan pertimbangkan untuk mulai investasi.`,
+          description: `Dari penghasilan Rp ${totalIncome.toLocaleString('id-ID')}, Anda berhasil menyisihkan ${savingsRate.toFixed(1)}% = Rp ${currentSavings.toLocaleString('id-ID')}! Ini di atas target 20%. 💪 Pertahankan ini dan pertimbangkan untuk mulai investasi.`,
           planName: 'Pertahankan & Invest',
           actionSteps: [
-            `Pertahankan savings rate minimal ${savingsRate.toFixed(0)}% setiap bulan`,
-            'Setelah dana darurat 6x expenses terpenuhi, mulai investasi',
-            'Pertimbangkan reksa dana index fund untuk jangka panjang'
+            `Pertahankan porsi tabungan minimal ${savingsRate.toFixed(0)}% setiap bulan`,
+            'Setelah dana darurat 6x pengeluaran terpenuhi, mulai investasi',
+            'Pertimbangkan reksa dana indeks untuk jangka panjang'
           ],
           targetDate: '3 bulan'
         });
       }
     }
 
-    // 5. Task Priority Analysis
     if (pendingTodos.length > 0) {
       const urgentTodo = pendingTodos[0];
       const overdueTodos = pendingTodos.filter(t => {
@@ -1156,18 +1114,17 @@ export default function DashboardPage() {
         title: `Prioritas Tertinggi: ${urgentTodo.task_name}`,
         tag: 'Produktivitas',
         isInternet: false,
-        description: `Anda memiliki ${pendingTodos.length} tugas aktif. Prioritas utama: "${urgentTodo.task_name}"${urgentTodo.due_date ? ` (tenggat: ${new Date(urgentTodo.due_date).toLocaleDateString('id-ID')})` : ' (tanpa tenggat)'}. ${overdueTodos.length > 0 ? `⚠️ Anda memiliki ${overdueTodos.length} tugas terlambat!` : pendingTodos.length > 5 ? 'Beban tugas cukup banyak. Selesaikan satu per satu.' : 'Beban tugas masih manageable.'}`,
+        description: `Anda memiliki ${pendingTodos.length} tugas aktif. Prioritas utama: "${urgentTodo.task_name}"${urgentTodo.due_date ? ` (tenggat: ${new Date(urgentTodo.due_date).toLocaleDateString('id-ID')})` : ' (tanpa tenggat)'}. ${overdueTodos.length > 0 ? `⚠️ Anda memiliki ${overdueTodos.length} tugas terlambat!` : pendingTodos.length > 5 ? 'Beban tugas cukup banyak. Selesaikan satu per satu.' : 'Beban tugas masih dapat diatur.'}`,
         planName: 'Fokus Tugas Prioritas',
         actionSteps: [
           `Prioritaskan "${urgentTodo.task_name}" untuk diselesaikan pertama`,
-          'Breakdown tugas menjadi step-step kecil',
-          'Set timer 25 menit (Pomodoro) untuk fokus'
+          'Pecah tugas menjadi langkah-langkah kecil',
+          'Atur timer 25 menit (Pomodoro) untuk fokus'
         ],
         targetDate: urgentTodo.due_date || '3 hari'
       });
     }
 
-    // 6. Consistency Challenge
     if (consistencyRate < 70 && rawTodos.length >= 3) {
       insights.push({
         id: 'insight-consistency',
@@ -1179,13 +1136,12 @@ export default function DashboardPage() {
         actionSteps: [
           'Mulai dengan tugas terkecil untuk membangun momentum',
           'Gunakan teknik Pomodoro: 25 menit fokus, 5 menit istirahat',
-          'Celebrate setiap keberhasilan menyelesaikan tugas'
+          'Rayakan setiap keberhasilan menyelesaikan tugas'
         ],
         targetDate: '1 bulan'
       });
     }
 
-    // 7. Overflow Insights (only if we have enough data)
     if (rawTransactions.length >= 10 && sortedExpenses.length >= 3) {
       const avgExpense = totalExpense / sortedExpenses.length;
       const highExpenses = sortedExpenses.filter(e => Number(e.amount) > avgExpense);
@@ -1200,7 +1156,7 @@ export default function DashboardPage() {
           planName: 'Ratakan Pola Pengeluaran',
           actionSteps: [
             'Buat anggaran bulanan per kategori',
-            'Catat setiap transaksi untuk awareness',
+            'Catat setiap transaksi untuk kesadaran',
             'Kurangi pengeluaran besar yang berulang'
           ],
           targetDate: 'Bulan ini'
@@ -1208,7 +1164,7 @@ export default function DashboardPage() {
       }
     }
 
-    return insights.slice(0, 5); // Max 5 insights
+    return insights.slice(0, 5);
   };
 
   const handleTriggerPrint = () => {
@@ -1237,11 +1193,9 @@ export default function DashboardPage() {
         let finalMetadata: Record<string, any> = { ...mtMetadata, jam: mtTime || new Date().toTimeString().slice(0, 5) };
 
         if (supabase) {
-          // 1. Get authenticated user
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) throw new Error('Pengguna tidak terautentikasi.');
 
-          // 1.5 Upload receipt if file is selected
           if (receiptFile) {
             try {
               const fileExt = receiptFile.name.split('.').pop();
@@ -1275,14 +1229,12 @@ export default function DashboardPage() {
             dynamic_metadata: finalMetadata,
           };
 
-          // 2. Insert to database
           const { error } = await supabase
             .from('money_trackers')
             .insert({ ...newTx, user_id: user.id });
 
           if (error) throw error;
 
-          // 3. Trigger Real-time recompute insight Kelas A
           try {
             const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
             await fetch('/api/internal/recompute-insight', {
@@ -1297,7 +1249,6 @@ export default function DashboardPage() {
             console.error('Failed to trigger insight recompute:', apiErr);
           }
 
-          // 4. Refresh data
           const { data: updatedTxs } = await supabase
             .from('money_trackers')
             .select('*')
@@ -1319,7 +1270,6 @@ export default function DashboardPage() {
             setInsights(map);
           }
         } else {
-          // Simulation mode: append to state and recalculate
           if (receiptPreview) {
             finalMetadata = { ...finalMetadata, receipt_url: receiptPreview };
           }
@@ -1341,7 +1291,6 @@ export default function DashboardPage() {
         }
 
         setSubmitSuccessMsg('Transaksi berhasil ditambahkan!');
-        // Reset form
         setMtAmount('');
         setMtDescription('');
         setReceiptFile(null);
@@ -1362,18 +1311,15 @@ export default function DashboardPage() {
         };
 
         if (supabase) {
-          // 1. Get authenticated user
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) throw new Error('Pengguna tidak terautentikasi.');
 
-          // 2. Insert to database
           const { error } = await supabase
             .from('todo_lists')
             .insert({ ...newTodo, user_id: user.id });
 
           if (error) throw error;
 
-          // 3. Trigger Real-time recompute insight
           try {
             const gatewayKey = process.env.NEXT_PUBLIC_GATEWAY_KEY || 'jarvis-super-secret-key-2026';
             await fetch('/api/internal/recompute-insight', {
@@ -1388,7 +1334,6 @@ export default function DashboardPage() {
             console.error('Failed to trigger insight recompute:', apiErr);
           }
 
-          // 4. Refresh data
           const { data: updatedTodos } = await supabase
             .from('todo_lists')
             .select('*')
@@ -1410,7 +1355,6 @@ export default function DashboardPage() {
             setInsights(map);
           }
         } else {
-          // Simulation mode
           const simulatedTodo = {
             id: String(Date.now()),
             created_at: new Date().toISOString(),
@@ -1538,7 +1482,6 @@ export default function DashboardPage() {
     );
   }
 
-  // Extracts data helper - COMPUTE from rawTransactions for immediate display
   const computedIncome = rawTransactions
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -1550,13 +1493,11 @@ export default function DashboardPage() {
   const netSavings = totalIncome - totalExpense;
   const progressRatio = totalIncome > 0 ? Math.min((totalExpense / totalIncome) * 100, 100) : 0;
 
-  // Compute consistency score from rawTodos
   const completedTodosCount = rawTodos.filter(t => t.status === 'completed').length;
   const totalTodosCount = rawTodos.length;
   const computedConsistency = totalTodosCount > 0 ? Math.round((completedTodosCount / totalTodosCount) * 100) : 0;
   const consistencyScore = insights.consistency_graph?.sources_metadata?.consistencyRate || computedConsistency;
 
-  // isDemo - reactive state-based version
   const isDemo = isDemoMode || !supabase;
 
   const getUsageDays = () => {
@@ -1621,17 +1562,13 @@ export default function DashboardPage() {
     );
   };
 
-  // Simulator calculation
   const simulatedExpense = totalExpense * riskMultiplier;
-  const simulatedSavings = totalIncome - simulatedExpense;
   const baseRunway = totalExpense > 0 ? (15000000 / totalExpense) : 3;
   const simulatedRunway = simulatedExpense > 0 ? (15000000 / simulatedExpense) : 3;
 
-  // Extract time-based data from insights OR compute from raw data
   const moodSpendingData = insights.mood_vs_spending?.sources_metadata || {};
   const moodProductivityData = insights.mood_vs_productivity?.sources_metadata || {};
 
-  // Compute time-based spending from rawTransactions if not in insights
   const parseHourFromItem = (item: any): number => {
     const jam = item.dynamic_metadata?.jam || '';
     if (!jam) return -1;
@@ -1643,7 +1580,6 @@ export default function DashboardPage() {
     return -1;
   };
 
-  // Calculate spending by time period from raw data
   let rawSpendPagi = 0, rawSpendSiang = 0, rawSpendMalam = 0, rawTotalExpenseForTime = 0;
   rawTransactions.filter(t => t.type === 'expense').forEach(t => {
     const hr = parseHourFromItem(t);
@@ -1656,7 +1592,6 @@ export default function DashboardPage() {
     }
   });
 
-  // Calculate tasks by time period from raw data
   let rawTasksPagi = 0, rawTasksSiang = 0, rawTasksMalam = 0, rawTotalTasksWithTime = 0;
   rawTodos.forEach(t => {
     const hr = parseHourFromItem(t);
@@ -1668,14 +1603,12 @@ export default function DashboardPage() {
     }
   });
 
-  // Use computed values if insights don't have them
   const nightSpendingPercent = moodSpendingData.nightSpendingPercent || (rawTotalExpenseForTime > 0 ? Math.round((rawSpendMalam / rawTotalExpenseForTime) * 100) : 0);
   const tasksPagi = moodProductivityData.tasksPagi || rawTasksPagi;
   const tasksSiang = moodProductivityData.tasksSiang || rawTasksSiang;
   const tasksMalam = moodProductivityData.tasksMalam || rawTasksMalam;
   const totalTasksWithTime = moodProductivityData.totalTasksWithTime || rawTotalTasksWithTime;
 
-  // Chronotype calculation based on task distribution
   let chronotypeName = 'Steady Bear (Moderat)';
   let chronotypeRec = 'Aktivitas kognitif Anda merata sepanjang hari. Pertahankan ritme kerja yang seimbang.';
   if (totalTasksWithTime > 0) {
@@ -1690,47 +1623,45 @@ export default function DashboardPage() {
 
   return (
     <div>
-      {/* Header - Hide when accessed from mobile app */}
       {!isFromMobile && (
         <header className="dashboard-header">
-        <div className="brand">
-          <h1>DASHBOARD KOGNITIF</h1>
-          <p>Asisten Pribadi: {profile.assistant_name} ({
-            profile.selected_personality === 'stoic_strategist' ? 'Stoic' :
-            profile.selected_personality === 'tough_love_coach' ? 'Tough-Love' :
-            profile.selected_personality === 'ultimate_hype_man' ? 'Hype-Man' :
-            profile.selected_personality === 'elegant_confidant' ? 'Elegant' :
-            'Witty'
-          })</p>
-        </div>
-        <div 
-          className="user-badge" 
-          style={{ cursor: 'pointer', transition: 'var(--transition-smooth)' }} 
-          onClick={() => {
-            setShowProfileModal(true);
-            setSubmitSuccessMsg('');
-            setSubmitErrorMsg('');
-          }}
-          title="Klik untuk membuka Pengaturan Profil"
-        >
-          <div className="avatar-dot"></div>
-          <span style={{ fontSize: '0.9rem', fontWeight: 500, marginRight: '4px' }}>{profile.fullname}</span>
-          <button 
-            type="button" 
-            className="btn btn-secondary" 
-            style={{ padding: '4px 8px', fontSize: '0.75rem' }} 
-            onClick={(e) => {
-              e.stopPropagation();
-              handleLogout();
+          <div className="brand">
+            <h1>DASHBOARD KOGNITIF</h1>
+            <p>Asisten Pribadi: {profile.assistant_name} ({
+              profile.selected_personality === 'stoic_strategist' ? 'Stoic' :
+              profile.selected_personality === 'tough_love_coach' ? 'Tough-Love' :
+              profile.selected_personality === 'ultimate_hype_man' ? 'Hype-Man' :
+              profile.selected_personality === 'elegant_confidant' ? 'Elegant' :
+              'Witty'
+            })</p>
+          </div>
+          <div 
+            className="user-badge" 
+            style={{ cursor: 'pointer', transition: 'var(--transition-smooth)' }} 
+            onClick={() => {
+              setShowProfileModal(true);
+              setSubmitSuccessMsg('');
+              setSubmitErrorMsg('');
             }}
+            title="Klik untuk membuka Pengaturan Profil"
           >
-            Keluar
-          </button>
-        </div>
-      </header>
+            <div className="avatar-dot"></div>
+            <span style={{ fontSize: '0.9rem', fontWeight: 500, marginRight: '4px' }}>{profile.fullname}</span>
+            <button 
+              type="button" 
+              className="btn btn-secondary" 
+              style={{ padding: '4px 8px', fontSize: '0.75rem' }} 
+              onClick={(e) => {
+                e.stopPropagation();
+                handleLogout();
+              }}
+            >
+              Keluar
+            </button>
+          </div>
+        </header>
       )}
 
-      {/* Morning Briefing Banner */}
       {morningBriefing && !briefingDismissed && (
         <div style={{
           margin: '0 20px 16px',
@@ -1771,10 +1702,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Main Content */}
       <main className="dashboard-content">
         
-        {/* Navigation Tabs */}
         <nav className="dashboard-nav" style={{ marginBottom: '8px' }}>
           <button 
             type="button" 
@@ -1794,7 +1723,6 @@ export default function DashboardPage() {
 
         {activeView === 'analysis' && (
           <div className="fragment-wrapper">
-            {/* Developer simulation controls banner */}
             {!supabase && (
               <div className="dev-simulation-panel">
                 <div>
@@ -1809,7 +1737,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Action Bar for PDF Export */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '0 0 20px 0' }}>
               <button 
                 type="button" 
@@ -1831,14 +1758,12 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {/* Section 1: Financial Analytics */}
             <section>
               <h2 className="section-title" style={{ marginBottom: '20px' }}>
                 <span>📊</span> Analitik Keuangan & Anti-Boros
               </h2>
               
               <div className="insights-grid">
-                {/* Cash Flow Card */}
                 <div className={`card ${isCardLocked({ reqTrans: 1 }) ? 'locked' : ''}`}>
                   {renderLockOverlay({ reqTrans: 1 })}
                   <div className="card-header">
@@ -1868,7 +1793,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Money Leak Auditor */}
                 <div className={`card ${isCardLocked({ reqTrans: 3 }) ? 'locked' : ''}`}>
                   {renderLockOverlay({ reqTrans: 3 })}
                   <div className="card-header">
@@ -1897,7 +1821,6 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {/* Runway Forecast & Interactive Simulator */}
                 <div className={`card ${isCardLocked({ reqTrans: 5 }) ? 'locked' : ''}`}>
                   {renderLockOverlay({ reqTrans: 5 })}
                   <div className="card-header">
@@ -1933,14 +1856,12 @@ export default function DashboardPage() {
               </div>
             </section>
 
-            {/* Section 2: Productivity & Load */}
             <section>
               <h2 className="section-title" style={{ marginBottom: '20px' }}>
                 <span>⚡</span> Produktivitas & Manajemen Beban Kerja
               </h2>
               
               <div className="insights-grid">
-                {/* Consistency Graph */}
                 <div className={`card ${isCardLocked({ reqTodos: 2 }) ? 'locked' : ''}`}>
                   {renderLockOverlay({ reqTodos: 2 })}
                   <div className="card-header">
@@ -1979,7 +1900,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Weekly Priority Matrix */}
                 <div className={`card ${isCardLocked({ reqTodos: 3 }) ? 'locked' : ''}`}>
                   {renderLockOverlay({ reqTodos: 3 })}
                   <div className="card-header">
@@ -2003,7 +1923,6 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {/* Burnout Detection & Stress Engine */}
                 <div className={`card ${isCardLocked({ reqDays: 3 }) ? 'locked' : ''}`}>
                   {renderLockOverlay({ reqDays: 3 })}
                   <div className="card-header">
@@ -2028,14 +1947,12 @@ export default function DashboardPage() {
               </div>
             </section>
 
-            {/* Section 3: Mood & Behavioral Correlations */}
             <section>
               <h2 className="section-title" style={{ marginBottom: '20px' }}>
                 <span>🧠</span> Korelasi Kognitif & Psikologis (Ego Analysis)
               </h2>
               
               <div className="insights-grid">
-                {/* Mood vs Spending */}
                 <div className={`card ${isCardLocked({ reqDays: 5 }) ? 'locked' : ''}`}>
                   {renderLockOverlay({ reqDays: 5 })}
                   <div className="card-header">
@@ -2061,7 +1978,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Mood vs Productivity */}
                 <div className={`card ${isCardLocked({ reqDays: 5 }) ? 'locked' : ''}`}>
                   {renderLockOverlay({ reqDays: 5 })}
                   <div className="card-header">
@@ -2087,7 +2003,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Worth-It Score Audit */}
                 <div className={`card ${isCardLocked({ reqTrans: 3 }) ? 'locked' : ''}`}>
                   {renderLockOverlay({ reqTrans: 3 })}
                   <div className="card-header">
@@ -2107,7 +2022,6 @@ export default function DashboardPage() {
                   </p>
                 </div>
 
-                {/* Time-Based & Chronotype Analysis Card */}
                 <div className={`card ${isCardLocked({ reqDays: 2 }) ? 'locked' : ''}`}>
                   {renderLockOverlay({ reqDays: 2 })}
                   <div className="card-header">
@@ -2171,7 +2085,6 @@ export default function DashboardPage() {
               </div>
             </section>
 
-            {/* Section: Special Insights Card (Maksimal 5) */}
             <section className="special-insights-section">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
                 <h2 className="section-title" style={{ marginBottom: 0, borderLeftColor: 'var(--color-purple)' }}>
@@ -2180,8 +2093,8 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setInsightsRefreshCountdown(3600); // Reset countdown
-                    setInsightsVersion(prev => prev + 1); // Force re-compute insights
+                    setInsightsRefreshCountdown(3600);
+                    setInsightsVersion(prev => prev + 1);
                   }}
                   style={{
                     display: 'flex',
@@ -2245,7 +2158,6 @@ export default function DashboardPage() {
             )}
             </section>
 
-            {/* Section: Future Plans List */}
             <section className="future-plans-section">
               <h2 className="section-title" style={{ marginBottom: '20px', borderLeftColor: 'var(--color-success)' }}>
                 <span>🌱</span> Rencana Aksi Masa Depan Aktif
@@ -2281,7 +2193,6 @@ export default function DashboardPage() {
 
         {activeView === 'data' && (
           <div className="fragment-wrapper">
-            {/* Tab: Manajemen Data & Input */}
             <section className="manual-input-section">
               <div className="card" style={{ gap: '20px' }}>
                 <div className="card-header">
@@ -2432,7 +2343,6 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      {/* Dynamic Metadata Section */}
                       <div className="metadata-section">
                         <h4>Dynamic Metadata (Scanned & Custom)</h4>
                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -2552,7 +2462,6 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      {/* Dynamic Metadata Section */}
                       <div className="metadata-section">
                         <h4>Dynamic Metadata (Scanned & Custom)</h4>
                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -2633,11 +2542,6 @@ export default function DashboardPage() {
               </div>
             </section>
 
-            {/* ============================================================ */}
-            {/* DATA TABS: Transactions vs Todos - Separate Views */}
-            {/* ============================================================ */}
-
-            {/* Tab Switcher for Data Views */}
             <div className="card" style={{ padding: '0' }}>
               <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
                 <button
@@ -2692,9 +2596,6 @@ export default function DashboardPage() {
                 </button>
               </div>
 
-              {/* ============================================================ */}
-              {/* TRANSACTIONS TABLE */}
-              {/* ============================================================ */}
               {activeDataTab === 'transactions' && (
                 <div style={{ padding: '16px' }}>
                   {rawTransactions.length === 0 ? (
@@ -2708,7 +2609,6 @@ export default function DashboardPage() {
                     </p>
                   ) : (
                     <div className="fragment-wrapper">
-                      {/* Filter & Sort Controls */}
                       <div style={{
                         display: 'flex',
                         flexWrap: 'wrap',
@@ -2719,7 +2619,6 @@ export default function DashboardPage() {
                         borderRadius: '8px',
                         border: '1px solid var(--border-glass)',
                       }}>
-                        {/* Search */}
                         <div style={{ flex: '1 1 200px' }}>
                           <input
                             type="text"
@@ -2737,7 +2636,6 @@ export default function DashboardPage() {
                             }}
                           />
                         </div>
-                        {/* Filter by Type */}
                         <div style={{ flex: '0 0 auto' }}>
                           <select
                             value={txFilterType}
@@ -2757,7 +2655,6 @@ export default function DashboardPage() {
                             <option value="expense">📤 Pengeluaran</option>
                           </select>
                         </div>
-                        {/* Sort */}
                         <div style={{ flex: '0 0 auto', display: 'flex', gap: '8px' }}>
                           <select
                             value={txSortField}
@@ -2795,14 +2692,11 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      {/* Processed transactions with filter & sort */}
                       {(() => {
                         let filtered = [...rawTransactions];
-                        // Apply type filter
                         if (txFilterType !== 'all') {
                           filtered = filtered.filter(t => t.type === txFilterType);
                         }
-                        // Apply search
                         if (txSearchQuery) {
                           const q = txSearchQuery.toLowerCase();
                           filtered = filtered.filter(t =>
@@ -2810,7 +2704,6 @@ export default function DashboardPage() {
                             String(t.amount).includes(q)
                           );
                         }
-                        // Apply sort
                         filtered.sort((a, b) => {
                           let valA: any, valB: any;
                           switch (txSortField) {
@@ -2853,7 +2746,6 @@ export default function DashboardPage() {
                               return filtered.length;
                             })()} dari {rawTransactions.length} transaksi
                           </div>
-                          {/* Sticky Table Container */}
                           <div style={{
                             maxHeight: '500px',
                             overflowY: 'auto',
@@ -2973,74 +2865,75 @@ export default function DashboardPage() {
                                   </td>
                                 </tr>
                               ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Pagination */}
-                      {(() => {
-                        let filtered = [...rawTransactions];
-                        if (txFilterType !== 'all') filtered = filtered.filter(t => t.type === txFilterType);
-                        if (txSearchQuery) {
-                          const q = txSearchQuery.toLowerCase();
-                          filtered = filtered.filter(t => (t.description || '').toLowerCase().includes(q) || String(t.amount).includes(q));
-                        }
-                        const totalPages = Math.ceil(filtered.length / 10);
-                        if (totalPages <= 1) return null;
-                        return (
-                          <div style={{
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            gap: '8px',
-                            marginTop: '16px',
-                            padding: '12px',
-                            background: 'var(--color-bg)',
-                            borderRadius: '8px',
-                          }}>
-                            <button
-                              type="button"
-                              onClick={() => setCurrentTxPage(p => Math.max(1, p - 1))}
-                              disabled={currentTxPage === 1}
-                              style={{
-                                padding: '6px 12px',
-                                background: 'var(--color-surface)',
-                                border: '1px solid var(--color-border)',
-                                borderRadius: '6px',
-                                color: 'var(--text-primary)',
-                                cursor: currentTxPage === 1 ? 'not-allowed' : 'pointer',
-                                opacity: currentTxPage === 1 ? 0.5 : 1,
-                              }}
-                            >
-                              ←
-                            </button>
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                              Halaman {currentTxPage} dari {totalPages}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setCurrentTxPage(p => Math.min(totalPages, p + 1))}
-                              disabled={currentTxPage >= totalPages}
-                              style={{
-                                padding: '6px 12px',
-                                background: 'var(--color-surface)',
-                                border: '1px solid var(--color-border)',
-                                borderRadius: '6px',
-                                color: 'var(--text-primary)',
-                                cursor: currentTxPage >= totalPages ? 'not-allowed' : 'pointer',
-                                opacity: currentTxPage >= totalPages ? 0.5 : 1,
-                              }}
-                            >
-                              →
-                            </button>
+                              </tbody>
+                            </table>
                           </div>
-                        );
-                      })()}
-                    </div>)}
+
+                          {(() => {
+                            let filtered = [...rawTransactions];
+                            if (txFilterType !== 'all') filtered = filtered.filter(t => t.type === txFilterType);
+                            if (txSearchQuery) {
+                              const q = txSearchQuery.toLowerCase();
+                              filtered = filtered.filter(t => (t.description || '').toLowerCase().includes(q) || String(t.amount).includes(q));
+                            }
+                            const totalPages = Math.ceil(filtered.length / 10);
+                            if (totalPages <= 1) return null;
+                            return (
+                              <div style={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                gap: '8px',
+                                marginTop: '16px',
+                                padding: '12px',
+                                background: 'var(--color-bg)',
+                                borderRadius: '8px',
+                              }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setCurrentTxPage(p => Math.max(1, p - 1))}
+                                  disabled={currentTxPage === 1}
+                                  style={{
+                                    padding: '6px 12px',
+                                    background: 'var(--color-surface)',
+                                    border: '1px solid var(--color-border)',
+                                    borderRadius: '6px',
+                                    color: 'var(--text-primary)',
+                                    cursor: currentTxPage === 1 ? 'not-allowed' : 'pointer',
+                                    opacity: currentTxPage === 1 ? 0.5 : 1,
+                                  }}
+                                >
+                                  ←
+                                </button>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                  Halaman {currentTxPage} dari {totalPages}
+                               </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setCurrentTxPage(p => Math.min(totalPages, p + 1))}
+                                  disabled={currentTxPage >= totalPages}
+                                  style={{
+                                    padding: '6px 12px',
+                                    background: 'var(--color-surface)',
+                                    border: '1px solid var(--color-border)',
+                                    borderRadius: '6px',
+                                    color: 'var(--text-primary)',
+                                    cursor: currentTxPage >= totalPages ? 'not-allowed' : 'pointer',
+                                    opacity: currentTxPage >= totalPages ? 0.5 : 1,
+                                  }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              {/* ============================================================ */}
-              {/* TODOS TABLE */}
-              {/* ============================================================ */}
+              )}
+
               {activeDataTab === 'todos' && (
                 <div style={{ padding: '16px' }}>
                   {rawTodos.length === 0 ? (
@@ -3054,7 +2947,6 @@ export default function DashboardPage() {
                     </p>
                   ) : (
                     <div className="fragment-wrapper">
-                      {/* Filter & Sort Controls for Todos */}
                       <div style={{
                         display: 'flex',
                         flexWrap: 'wrap',
@@ -3065,7 +2957,6 @@ export default function DashboardPage() {
                         borderRadius: '8px',
                         border: '1px solid var(--border-glass)',
                       }}>
-                        {/* Search */}
                         <div style={{ flex: '1 1 200px' }}>
                           <input
                             type="text"
@@ -3083,7 +2974,6 @@ export default function DashboardPage() {
                             }}
                           />
                         </div>
-                        {/* Filter by Status */}
                         <div style={{ flex: '0 0 auto' }}>
                           <select
                             value={todoFilterStatus}
@@ -3104,7 +2994,6 @@ export default function DashboardPage() {
                             <option value="cancelled">❌ Batal</option>
                           </select>
                         </div>
-                        {/* Sort */}
                         <div style={{ flex: '0 0 auto', display: 'flex', gap: '8px' }}>
                           <select
                             value={todoSortField}
@@ -3142,7 +3031,6 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      {/* Processed todos with filter & sort */}
                       {(() => {
                         let filtered = [...rawTodos];
                         if (todoFilterStatus !== 'all') {
@@ -3191,224 +3079,205 @@ export default function DashboardPage() {
                               return filtered.length;
                             })()} dari {rawTodos.length} tugas
                           </div>
-                          {/* Sticky Table Container */}
                           <div style={{
                             maxHeight: '500px',
                             overflowY: 'auto',
                             borderRadius: '8px',
                             border: '1px solid var(--color-border)',
                           }}>
-                        <table style={{
-                          width: '100%',
-                          borderCollapse: 'collapse',
-                          fontSize: '0.85rem',
-                        }}>
-                          <thead style={{
-                            position: 'sticky',
-                            top: 0,
-                            background: 'var(--color-surface)',
-                            zIndex: 10,
-                          }}>
-                            <tr>
-                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Nama Tugas</th>
-                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Status</th>
-                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Waktu Mulai</th>
-                              <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Pengingat</th>
-                              <th style={{ padding: '12px 16px', textAlign: 'center', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Aksi</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(() => {
-                              let filtered = [...rawTodos];
-                              if (todoFilterStatus !== 'all') filtered = filtered.filter(t => t.status === todoFilterStatus);
-                              if (todoSearchQuery) {
-                                const q = todoSearchQuery.toLowerCase();
-                                filtered = filtered.filter(t => (t.task_name || '').toLowerCase().includes(q));
-                              }
-                              filtered.sort((a, b) => {
-                                let valA: any, valB: any;
-                                switch (todoSortField) {
-                                  case 'created_at':
-                                    valA = new Date(a.created_at || 0).getTime();
-                                    valB = new Date(b.created_at || 0).getTime();
-                                    break;
-                                  case 'due_date':
-                                    valA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
-                                    valB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
-                                    break;
-                                  case 'task_name':
-                                    valA = (a.task_name || '').toLowerCase();
-                                    valB = (b.task_name || '').toLowerCase();
-                                    break;
-                                  default:
-                                    valA = a.created_at;
-                                    valB = b.created_at;
-                                }
-                                return todoSortOrder === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
-                              });
-                              return filtered;
-                            })().slice((currentTodoPage - 1) * 10, currentTodoPage * 10).map((todo: any, idx: number) => (
-                                <tr key={todo.id || idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                                  <td style={{ padding: '12px 16px', fontWeight: 500 }}>
-                                    {todo.task_name}
-                                  </td>
-                                  <td style={{ padding: '12px 16px' }}>
-                                    <span style={{
-                                      padding: '4px 10px',
-                                      borderRadius: '20px',
-                                      fontSize: '0.75rem',
-                                      background: todo.status === 'completed' ? 'rgba(16,185,129,0.12)' : todo.status === 'cancelled' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
-                                      color: todo.status === 'completed' ? 'var(--color-success)' : todo.status === 'cancelled' ? 'var(--color-danger)' : 'var(--color-warning)',
-                                      fontWeight: 600
-                                    }}>
-                                      {todo.status === 'completed' ? '✅ Selesai' : todo.status === 'cancelled' ? '❌ Batal' : '⏳ Tertunda'}
-                                    </span>
-                                  </td>
-                                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                                    <div>{todo.waktu_mulai ? new Date(todo.waktu_mulai).toLocaleDateString('id-ID') : (todo.due_date ? new Date(todo.due_date).toLocaleDateString('id-ID') : '-')}</div>
-                                    {(todo.waktu_mulai ? todo.waktu_mulai : todo.dynamic_metadata?.jam) && (
-                                      <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
-                                        🕒 {(todo.waktu_mulai || todo.dynamic_metadata?.jam)?.slice(11, 16) || ''}
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                                    {todo.pengingat ? (
-                                      <div className="fragment-wrapper">
-                                        <div>{new Date(todo.pengingat).toLocaleDateString('id-ID')}</div>
-                                        <div style={{ fontSize: '0.8rem', opacity: 0.8, color: 'var(--color-warning)' }}>
-                                          🔔 {todo.pengingat.slice(11, 16)}
-                                        </div>
-                                      </div>
-                                    ) : '-'}
-                                  </td>
-                                  <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
-                                      <select
-                                        value={todo.status}
-                                        onChange={(e) => handleUpdateTodoStatus(todo.id, e.target.value as any)}
-                                        style={{
-                                          padding: '6px 10px',
-                                          background: 'var(--color-surface)',
-                                          border: '1px solid var(--color-border)',
-                                          borderRadius: '6px',
-                                          color: 'var(--text-primary)',
-                                          cursor: 'pointer',
-                                          fontSize: '0.75rem',
-                                        }}
-                                      >
-                                        <option value="pending">Tertunda</option>
-                                        <option value="completed">Selesai</option>
-                                        <option value="cancelled">Batal</option>
-                                      </select>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteTodo(todo.id)}
-                                        style={{
-                                          background: 'rgba(239, 68, 68, 0.1)',
-                                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                                          color: 'var(--color-danger)',
-                                          padding: '6px 10px',
-                                          borderRadius: '6px',
-                                          cursor: 'pointer',
-                                          fontSize: '0.75rem',
-                                        }}
-                                      >
-                                        🗑️
-                                      </button>
-                                    </div>
-                                  </td>
+                            <table style={{
+                              width: '100%',
+                              borderCollapse: 'collapse',
+                              fontSize: '0.85rem',
+                            }}>
+                              <thead style={{
+                                position: 'sticky',
+                                top: 0,
+                                background: 'var(--color-surface)',
+                                zIndex: 10,
+                              }}>
+                                <tr>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Nama Tugas</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Status</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Waktu Mulai</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Pengingat</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'center', borderBottom: '2px solid var(--color-border)', fontWeight: 600, whiteSpace: 'nowrap' }}>Aksi</th>
                                 </tr>
-                              ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Pagination for Todos */}
-                      {(() => {
-                        let filtered = [...rawTodos];
-                        if (todoFilterStatus !== 'all') filtered = filtered.filter(t => t.status === todoFilterStatus);
-                        if (todoSearchQuery) {
-                          const q = todoSearchQuery.toLowerCase();
-                          filtered = filtered.filter(t => (t.task_name || '').toLowerCase().includes(q));
-                        }
-                        filtered.sort((a, b) => {
-                          let valA: any, valB: any;
-                          switch (todoSortField) {
-                            case 'created_at':
-                              valA = new Date(a.created_at || 0).getTime();
-                              valB = new Date(b.created_at || 0).getTime();
-                              break;
-                            case 'due_date':
-                              valA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
-                              valB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
-                              break;
-                            case 'task_name':
-                              valA = (a.task_name || '').toLowerCase();
-                              valB = (b.task_name || '').toLowerCase();
-                              break;
-                            default:
-                              valA = a.created_at;
-                              valB = b.created_at;
-                          }
-                          return todoSortOrder === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
-                        });
-                        const totalPages = Math.ceil(filtered.length / 10);
-                        if (totalPages <= 1) return null;
-                        return (
-                          <div style={{
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            gap: '8px',
-                            marginTop: '16px',
-                            padding: '12px',
-                            background: 'var(--color-bg)',
-                            borderRadius: '8px',
-                          }}>
-                            <button
-                              type="button"
-                              onClick={() => setCurrentTodoPage(p => Math.max(1, p - 1))}
-                              disabled={currentTodoPage === 1}
-                              style={{
-                                padding: '6px 12px',
-                                background: 'var(--color-surface)',
-                                border: '1px solid var(--color-border)',
-                                borderRadius: '6px',
-                                color: 'var(--text-primary)',
-                                cursor: currentTodoPage === 1 ? 'not-allowed' : 'pointer',
-                                opacity: currentTodoPage === 1 ? 0.5 : 1,
-                              }}
-                            >
-                              ←
-                            </button>
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                              Halaman {currentTodoPage} dari {totalPages}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setCurrentTodoPage(p => Math.min(totalPages, p + 1))}
-                              disabled={currentTodoPage >= totalPages}
-                              style={{
-                                padding: '6px 12px',
-                                background: 'var(--color-surface)',
-                                border: '1px solid var(--color-border)',
-                                borderRadius: '6px',
-                                color: 'var(--text-primary)',
-                                cursor: currentTodoPage >= totalPages ? 'not-allowed' : 'pointer',
-                                opacity: currentTodoPage >= totalPages ? 0.5 : 1,
-                              }}
-                            >
-                              →
-                            </button>
+                              </thead>
+                              <tbody>
+                                {(() => {
+                                  let filtered = [...rawTodos];
+                                  if (todoFilterStatus !== 'all') filtered = filtered.filter(t => t.status === todoFilterStatus);
+                                  if (todoSearchQuery) {
+                                    const q = todoSearchQuery.toLowerCase();
+                                    filtered = filtered.filter(t => (t.task_name || '').toLowerCase().includes(q));
+                                  }
+                                  filtered.sort((a, b) => {
+                                    let valA: any, valB: any;
+                                    switch (todoSortField) {
+                                      case 'created_at':
+                                        valA = new Date(a.created_at || 0).getTime();
+                                        valB = new Date(b.created_at || 0).getTime();
+                                        break;
+                                      case 'due_date':
+                                        valA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+                                        valB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+                                        break;
+                                      case 'task_name':
+                                        valA = (a.task_name || '').toLowerCase();
+                                        valB = (b.task_name || '').toLowerCase();
+                                        break;
+                                      default:
+                                        valA = a.created_at;
+                                        valB = b.created_at;
+                                    }
+                                    return todoSortOrder === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
+                                  });
+                                  return filtered;
+                                })().slice((currentTodoPage - 1) * 10, currentTodoPage * 10).map((todo: any, idx: number) => (
+                                  <tr key={todo.id || idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                                    <td style={{ padding: '12px 16px', fontWeight: 500 }}>
+                                      {todo.task_name}
+                                    </td>
+                                    <td style={{ padding: '12px 16px' }}>
+                                      <span style={{
+                                        padding: '4px 10px',
+                                        borderRadius: '20px',
+                                        fontSize: '0.75rem',
+                                        background: todo.status === 'completed' ? 'rgba(16,185,129,0.12)' : todo.status === 'cancelled' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
+                                        color: todo.status === 'completed' ? 'var(--color-success)' : todo.status === 'cancelled' ? 'var(--color-danger)' : 'var(--color-warning)',
+                                        fontWeight: 600
+                                      }}>
+                                        {todo.status === 'completed' ? '✅ Selesai' : todo.status === 'cancelled' ? '❌ Batal' : '⏳ Tertunda'}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                      <div>{todo.waktu_mulai ? new Date(todo.waktu_mulai).toLocaleDateString('id-ID') : (todo.due_date ? new Date(todo.due_date).toLocaleDateString('id-ID') : '-')}</div>
+                                      {(todo.waktu_mulai || todo.dynamic_metadata?.jam) && (
+                                        <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
+                                          🕒 {todo.waktu_mulai ? todo.waktu_mulai.slice(11, 16) : todo.dynamic_metadata?.jam}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                      {todo.pengingat ? (
+                                        <div className="fragment-wrapper">
+                                          <div>{new Date(todo.pengingat).toLocaleDateString('id-ID')}</div>
+                                          <div style={{ fontSize: '0.8rem', opacity: 0.8, color: 'var(--color-warning)' }}>
+                                            🔔 {todo.pengingat.slice(11, 16)}
+                                          </div>
+                                        </div>
+                                      ) : '-'}
+                                    </td>
+                                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                                        <select
+                                          value={todo.status}
+                                          onChange={(e) => handleUpdateTodoStatus(todo.id, e.target.value as any)}
+                                          style={{
+                                            padding: '6px 10px',
+                                            background: 'var(--color-surface)',
+                                            border: '1px solid var(--color-border)',
+                                            borderRadius: '6px',
+                                            color: 'var(--text-primary)',
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                          }}
+                                        >
+                                          <option value="pending">Tertunda</option>
+                                          <option value="completed">Selesai</option>
+                                          <option value="cancelled">Batal</option>
+                                        </select>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteTodo(todo.id)}
+                                          style={{
+                                            background: 'rgba(239, 68, 68, 0.1)',
+                                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                                            color: 'var(--color-danger)',
+                                            padding: '6px 10px',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                          }}
+                                        >
+                                          🗑️
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
-                        );
-                      })()}
+
+                          {(() => {
+                            let filtered = [...rawTodos];
+                            if (todoFilterStatus !== 'all') filtered = filtered.filter(t => t.status === todoFilterStatus);
+                            if (todoSearchQuery) {
+                              const q = todoSearchQuery.toLowerCase();
+                              filtered = filtered.filter(t => (t.task_name || '').toLowerCase().includes(q));
+                            }
+                            const totalPages = Math.ceil(filtered.length / 10);
+                            if (totalPages <= 1) return null;
+                            return (
+                              <div style={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                gap: '8px',
+                                marginTop: '16px',
+                                padding: '12px',
+                                background: 'var(--color-bg)',
+                                borderRadius: '8px',
+                              }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setCurrentTodoPage(p => Math.max(1, p - 1))}
+                                  disabled={currentTodoPage === 1}
+                                  style={{
+                                    padding: '6px 12px',
+                                    background: 'var(--color-surface)',
+                                    border: '1px solid var(--color-border)',
+                                    borderRadius: '6px',
+                                    color: 'var(--text-primary)',
+                                    cursor: currentTodoPage === 1 ? 'not-allowed' : 'pointer',
+                                    opacity: currentTodoPage === 1 ? 0.5 : 1,
+                                  }}
+                                >
+                                  ←
+                                </button>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                  Halaman {currentTodoPage} dari {totalPages}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setCurrentTodoPage(p => Math.min(totalPages, p + 1))}
+                                  disabled={currentTodoPage >= totalPages}
+                                  style={{
+                                    padding: '6px 12px',
+                                    background: 'var(--color-surface)',
+                                    border: '1px solid var(--color-border)',
+                                    borderRadius: '6px',
+                                    color: 'var(--text-primary)',
+                                    cursor: currentTodoPage >= totalPages ? 'not-allowed' : 'pointer',
+                                    opacity: currentTodoPage >= totalPages ? 0.5 : 1,
+                                  }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
                   )}
+                </div>
+              )}
             </div>
+          </div>
         )}
-
       </main>
 
       {showProfileModal && (
@@ -3422,7 +3291,6 @@ export default function DashboardPage() {
             <form onSubmit={handleSaveProfile} className="input-form">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                 
-                {/* 1. Profil Pengguna */}
                 <div>
                   <h4 style={{ fontSize: '0.9rem', color: 'var(--color-primary)', marginBottom: '10px', fontFamily: 'var(--font-title)', fontWeight: 600 }}>
                     Profil Pengguna
@@ -3455,7 +3323,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* 2. Pengaturan Akun */}
                 <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '16px' }}>
                   <h4 style={{ fontSize: '0.9rem', color: 'var(--color-warning)', marginBottom: '10px', fontFamily: 'var(--font-title)', fontWeight: 600 }}>
                     Pengaturan Akun
@@ -3484,7 +3351,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* 3. Konfigurasi Asisten AI */}
                 <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '16px' }}>
                   <h4 style={{ fontSize: '0.9rem', color: 'var(--color-purple)', marginBottom: '10px', fontFamily: 'var(--font-title)', fontWeight: 600 }}>
                     Konfigurasi Asisten AI & Ego AI
@@ -3558,13 +3424,11 @@ export default function DashboardPage() {
               </p>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(255, 255, 255, 0.02)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-                {/* 1. Laporan Utama */}
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', cursor: 'not-allowed', opacity: 0.8 }}>
                   <input type="checkbox" checked disabled style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary)' }} />
                   <span><strong>Laporan Analisis Kognitif Utama</strong> (Wajib)</span>
                 </label>
                 
-                {/* 2. Opsi Uang */}
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', cursor: 'pointer' }}>
                   <input 
                     type="checkbox" 
@@ -3575,7 +3439,6 @@ export default function DashboardPage() {
                   <span>Sertakan Riwayat Transaksi Keuangan (Money Tracker)</span>
                 </label>
                 
-                {/* 3. Opsi Tugas */}
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', cursor: 'pointer' }}>
                   <input 
                     type="checkbox" 
@@ -3600,9 +3463,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Hidden Print Section for A4 portrait export */}
       <div id="print-section">
-        {/* PAGE 1: Cognitive Analysis Report */}
         <div className="print-page">
           <div className="print-header">
             <div>
@@ -3703,7 +3564,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* PAGE 2: Financial Transactions (Optional) */}
         {exportTransactions && (
           <div className="print-page">
             <div className="print-header">
@@ -3756,7 +3616,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* PAGE 3: Tasks List (Optional) */}
         {exportTodos && (
           <div className="print-page">
             <div className="print-header">
