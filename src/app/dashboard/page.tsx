@@ -2912,7 +2912,6 @@ export default function DashboardPage() {
                         );
                       })()}
                     </div>
-                    </div>
                   )}
                 </div>
               )}
@@ -3283,7 +3282,6 @@ export default function DashboardPage() {
                           </div>
                         );
                       })()}
-                    </div>
                     </div>
                   )}
                 </div>
