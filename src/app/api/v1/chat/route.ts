@@ -75,6 +75,48 @@ function shouldRunExtraction(message: string): boolean {
   return keywords.some(kw => clean.includes(kw));
 }
 
+// Destructive command patterns that require human confirmation
+const DESTRUCTIVE_PATTERNS = [
+  { pattern: /hapus\s+(semua|seluruh|data\s+)?(keuangan|transaksi|tugas|chat|profile)/i, table: 'multiple', intent: 'delete' },
+  { pattern: /hapus\s+semua/i, table: null, intent: 'delete' },
+  { pattern: /delete\s+all/i, table: null, intent: 'delete' },
+  { pattern: /hapus\s+data\s+(keuangan|transaksi)/i, table: 'money_trackers', intent: 'delete' },
+  { pattern: /hapus\s+(semua\s+)?tugas/i, table: 'todo_lists', intent: 'delete' },
+  { pattern: /hapus\s+(semua\s+)?chat/i, table: 'app_chat_messages', intent: 'delete' },
+  { pattern: /reset\s+(semua|data)/i, table: 'multiple', intent: 'delete' },
+  { pattern: /clear\s+(all|data)/i, table: null, intent: 'delete' },
+  { pattern: /update\s+all/i, table: null, intent: 'update' },
+  { pattern: /update\s+semua/i, table: null, intent: 'update' },
+];
+
+// Detect if message contains destructive command
+function detectDestructiveCommand(message: string): { isDestructive: boolean; table: string | null; intent: string; statement: string } | null {
+  for (const { pattern, table, intent } of DESTRUCTIVE_PATTERNS) {
+    if (pattern.test(message)) {
+      let statement = '';
+      const cleanMsg = message.toLowerCase();
+
+      if (table === 'money_trackers' || cleanMsg.includes('keuangan') || cleanMsg.includes('transaksi')) {
+        statement = `DELETE FROM money_trackers WHERE user_id = '{USER_ID_PLACEHOLDER}'`;
+      } else if (table === 'todo_lists' || cleanMsg.includes('tugas')) {
+        statement = `DELETE FROM todo_lists WHERE user_id = '{USER_ID_PLACEHOLDER}'`;
+      } else if (table === 'app_chat_messages' || cleanMsg.includes('chat')) {
+        statement = `DELETE FROM app_chat_messages WHERE user_id = '{USER_ID_PLACEHOLDER}'`;
+      } else {
+        statement = `DELETE FROM money_trackers WHERE user_id = '{USER_ID_PLACEHOLDER}'; DELETE FROM todo_lists WHERE user_id = '{USER_ID_PLACEHOLDER}'`;
+      }
+
+      return {
+        isDestructive: true,
+        table: table || 'multiple',
+        intent,
+        statement
+      };
+    }
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   // 1. Authenticate Request (Gateway & JWT Verification)
   const authResult = await verifyGatewayAndUser(req);
@@ -98,6 +140,46 @@ export async function POST(req: NextRequest) {
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+    }
+
+    // ============================================================
+    // DESTRUCTIVE COMMAND DETECTION
+    // If user asks to delete/update all data, require confirmation
+    // ============================================================
+    const destructiveCheck = detectDestructiveCommand(message);
+
+    if (destructiveCheck && destructiveCheck.isDestructive) {
+      // Generate confirmation message
+      const tableNames: Record<string, string> = {
+        'money_trackers': 'semua data keuangan',
+        'todo_lists': 'semua tugas',
+        'app_chat_messages': 'semua chat',
+        'multiple': 'semua data'
+      };
+
+      const confirmationMessage = `⚠️ PERHATIAN - AKSI DESTRUKTIF
+
+Anda meminta: ${destructiveCheck.intent === 'delete' ? 'HAPUS' : 'UPDATE'} ${tableNames[destructiveCheck.table] || 'data'}
+
+Ini adalah aksi yang TIDAK DAPAT DIBATALKAN.
+
+Untuk melanjutkan, klik tombol "Konfirmasi" di bawah.
+Aksi akan dieksekusi setelah Anda konfirmasi.
+
+Apakah Anda yakin ingin melanjutkan?`;
+
+      // Return special response with confirmation flag
+      return NextResponse.json({
+        bubbles: [confirmationMessage],
+        requires_confirmation: true,
+        confirmation_data: {
+          action_type: destructiveCheck.intent === 'delete' ? 'delete_all' : 'update_all',
+          table_name: destructiveCheck.table,
+          intent: destructiveCheck.intent,
+          statement: destructiveCheck.statement,
+          message: `Hapus ${tableNames[destructiveCheck.table] || 'data'}`
+        }
+      });
     }
 
     // Get user timezone from request or default to Asia/Jakarta
