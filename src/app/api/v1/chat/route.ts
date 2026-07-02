@@ -4,6 +4,9 @@ import { verifyGatewayAndUser } from '@/lib/middleware/gateway';
 import { scrubPII } from '@/lib/utils/scrubber';
 import { supabaseAdmin } from '@/lib/services/supabase';
 import { runStage1Extraction, runStage2Chat } from '@/lib/services/gemini';
+import { handleToolCall, getDatabaseSchema } from '@/lib/tools/executor';
+import { geminiToolDeclarations } from '@/lib/tools/database-tools';
+import { getUserAnalysisPreferences, generatePreferencesContext } from '@/lib/services/analysis-preferences';
 
 // Simple in-memory rate limiter (5 requests per minute per user)
 // With automatic cleanup to prevent memory leak
@@ -212,6 +215,41 @@ export async function POST(req: NextRequest) {
     }
 
     // ============================================================
+    // INJECT DATABASE CONTEXT FOR AI TOOLS
+    // ============================================================
+    // Get current schema info for AI context
+    const schemaInfo = await getDatabaseSchema();
+
+    if (schemaInfo.success && schemaInfo.data) {
+      const tables = schemaInfo.data.tables || [];
+      let schemaContext = '\n\n┌──────────────────────────────────────────────────────────┐\n│  📊 DATABASE SCHEMA (Available Tables & Columns):         │\n│                                                          │';
+
+      for (const table of tables.slice(0, 10)) { // Limit to first 10 tables
+        const tableName = table.table_name;
+        const columns = table.columns?.map((c: any) => `${c.column_name}(${c.data_type})`).join(', ') || '';
+        if (columns) {
+          schemaContext += `\n│  • ${tableName}: ${columns}`;
+        }
+      }
+      schemaContext += '\n└──────────────────────────────────────────────────────────┘';
+
+      // Add instruction about using tools
+      schemaContext += `\n\nYou have access to database tools. You can use them when the user asks to:
+  - See or analyze their transaction history
+  - Check their tasks or todo lists
+  - Update or modify their data
+  - View statistics or summaries
+
+IMPORTANT: When using tools:
+  1. Use 'get_database_schema' first to understand table structures
+  2. Use 'execute_database_query' for INSERT, UPDATE, DELETE operations
+  3. Always be clear about what you're doing in your response
+  4. Report success or errors from tool executions clearly`;
+
+      personalityTemplate += schemaContext;
+    }
+
+    // ============================================================
     // INJECT LEARNED PREFERENCES (Skema 1 + Hybrid)
     // ============================================================
     if (chatPrefs) {
@@ -258,6 +296,15 @@ export async function POST(req: NextRequest) {
 
       prefsInstruction += '\n└──────────────────────────────────────────────────────────┘';
       personalityTemplate += prefsInstruction;
+    }
+
+    // ============================================================
+    // INJECT ANALYSIS PREFERENCES
+    // ============================================================
+    const analysisPrefs = await getUserAnalysisPreferences(userId);
+    const analysisContext = generatePreferencesContext(analysisPrefs);
+    if (analysisContext) {
+      personalityTemplate += analysisContext;
     }
 
     const temperature = Number(personality?.temperature ?? 0.3);
@@ -485,8 +532,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 8. Stage 2 Chat styling
-    const bubbles = await runStage2Chat({
+    // 8. Stage 2 Chat styling with AI Tools
+    let bubbles = await runStage2Chat({
       userMessage: scrubbedMessage,
       userNickname,
       assistantName,
@@ -497,6 +544,102 @@ export async function POST(req: NextRequest) {
       chatHistory: history,
       userTimezone: userTimezone,
     });
+
+    // 8.1 AI Tool Calling - Check if AI wants to execute database operations
+    // This runs in a loop to handle multiple tool calls
+    const maxToolIterations = 3;
+    for (let iteration = 0; iteration < maxToolIterations; iteration++) {
+      // Build the AI request with tools
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
+      // Create a prompt asking if the AI wants to use tools
+      const toolCheckPrompt = `
+The user said: "${scrubbedMessage}"
+
+Your previous response was: "${bubbles.join(' [BREAK] ')}"
+
+Based on your personality instruction and the database schema available to you,
+should you execute any database operations? If yes, specify which tool to use and with what parameters.
+
+Respond in this JSON format ONLY (no other text):
+{
+  "should_use_tool": true/false,
+  "tool_name": "get_database_schema" | "execute_database_query" | "list_available_tables" | null,
+  "tool_args": {
+    "statement": "SQL statement if execute_database_query",
+    "table_name": "table name",
+    "intent": "insert|update|delete|select"
+  },
+  "reasoning": "Why you're using this tool"
+}
+
+Only suggest 'execute_database_query' if the user explicitly asks to:
+- Add, update, or delete data
+- See specific transaction or task details
+- Check their financial status or statistics
+
+DO NOT suggest tool usage for casual conversation or questions about general topics.`;
+
+      let toolCallResult: any = null;
+      let toolUsed = false;
+
+      try {
+        // Generate with tools available
+        const modelResponse = await ai.models.generateContent({
+          model: 'gemini-2.0-flash',
+          contents: toolCheckPrompt,
+          config: {
+            tools: [{ functionDeclarations: geminiToolDeclarations }],
+            temperature: 0.1, // Low temperature for tool decisions
+          },
+        });
+
+        // Check for function calls
+        const functionCalls = (modelResponse as any).candidates?.[0]?.content?.parts;
+
+        if (functionCalls && functionCalls.length > 0) {
+          for (const part of functionCalls) {
+            if (part.functionCall) {
+              const toolName = part.functionCall.name;
+              const toolArgs = part.functionCall.args || {};
+
+              console.log(`[AI TOOL] Executing: ${toolName}`, toolArgs);
+
+              // Execute the tool
+              const result = await handleToolCall(toolName, toolArgs, userId);
+
+              // Format result for AI context
+              let resultSummary = '';
+              if (result.success) {
+                resultSummary = `✅ Success: ${JSON.stringify(result.data || result.message || result)}`;
+              } else {
+                resultSummary = `❌ Error: ${result.error}`;
+              }
+
+              toolCallResult = {
+                toolName,
+                args: toolArgs,
+                result: resultSummary
+              };
+              toolUsed = true;
+
+              // Add tool result to bubbles
+              bubbles.push(`\n\n📊 *Tool executed: ${toolName}*\n${resultSummary}`);
+
+              break; // Only handle first tool call per iteration
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error('[AI TOOL] Error:', err);
+        // Continue without tool - don't break the chat
+      }
+
+      // If no tool was used, break the loop
+      if (!toolUsed) {
+        break;
+      }
+    }
 
     // 9. Save AI Response to Database
     const fullResponse = bubbles.join(' [BREAK] ');

@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
     // Search transactions
     const { data: transactions } = await supabaseAdmin
       .from('money_trackers')
-      .select('*')
+      .select('*, payment_methods(*)')
       .eq('user_id', userId)
       .or(`description.ilike.${searchPattern},type.ilike.${searchPattern}`)
       .order('created_at', { ascending: false })
@@ -87,6 +87,8 @@ export async function GET(req: NextRequest) {
         description: t.description,
         date: t.transaction_date || t.created_at,
         category: 'transaction',
+        payment_method_id: t.payment_method_id,
+        payment_method: t.payment_methods,
       }));
     }
 

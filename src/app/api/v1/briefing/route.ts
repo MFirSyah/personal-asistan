@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyGatewayAndUser } from '@/lib/middleware/gateway';
 import { supabaseAdmin } from '@/lib/services/supabase';
+import { getUserAnalysisPreferences, generatePreferencesContext } from '@/lib/services/analysis-preferences';
 
 export async function GET(req: NextRequest) {
   const authResult = await verifyGatewayAndUser(req);
@@ -76,6 +77,10 @@ export async function GET(req: NextRequest) {
     const transactions = transactionsResult.data || [];
     const personality = personalityResult?.data || null;
 
+    // Get user's analysis preferences
+    const analysisPrefs = await getUserAnalysisPreferences(userId);
+    const preferencesContext = generatePreferencesContext(analysisPrefs);
+
     const personalityHint = personality?.system_instruction_template
       ? personality.system_instruction_template.substring(0, 300)
       : 'Friendly and casual';
@@ -109,6 +114,8 @@ export async function GET(req: NextRequest) {
       contents: `You are ${assistantName}, an AI personal assistant for ${userNickname}.
 Your personality: ${personalityHint}
 
+${preferencesContext}
+
 IMPORTANT - Current Date/Time (User's local timezone):
 - Today is: ${now.toLocaleDateString('id-ID', { timeZone: timezone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
 - Current time: ${now.toLocaleTimeString('id-ID', { timeZone: timezone, hour: '2-digit', minute: '2-digit' })} ${tzInfo.name}
@@ -122,12 +129,14 @@ IMPORTANT RULES:
 - Use numbers (1., 2., 3., 4.) for lists, NOT bullet points (* or -)
 - Keep paragraphs short and easy to read
 - Do NOT use bold (**text**) or italic (*text*) markers
+- FOCUS on the insight types enabled in user's preferences
+- ADJUST detail level based on: ${analysisPrefs?.insight_detail_level || 'standard'}
 
 Structure the briefing like this (use plain text):
 1. A warm good morning greeting
-2. Today's task overview
-3. Quick financial snapshot
-4. A motivational closing
+2. Today's task overview (based on include_priority_matrix preference)
+3. Quick financial snapshot (based on include_cash_flow preference)
+4. Any alerts based on user settings
 
 Data context:
 TASKS TODAY:

@@ -58,6 +58,7 @@ class SyncService {
               'type': tx['type'],
               'description': tx['description'],
               'transaction_date': tx['transaction_date'],
+              'payment_method_id': tx['payment_method_id'],
               'dynamic_metadata': tx['dynamic_metadata'] ?? {},
             });
             await _dbHelper.markTransactionSynced(tx['id'] as String);

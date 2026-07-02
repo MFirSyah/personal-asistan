@@ -34,6 +34,7 @@ class LocalDatabaseHelper {
         type TEXT NOT NULL,
         description TEXT,
         transaction_date TEXT,
+        payment_method_id TEXT,
         dynamic_metadata TEXT,
         is_synced INTEGER NOT NULL DEFAULT 0
       )
@@ -76,6 +77,7 @@ class LocalDatabaseHelper {
         'type': tx['type'],
         'description': tx['description'],
         'transaction_date': tx['transaction_date'],
+        'payment_method_id': tx['payment_method_id'],
         'dynamic_metadata': jsonEncode(tx['dynamic_metadata'] ?? {}),
         'is_synced': tx['is_synced'] ?? 0,
       },
@@ -93,6 +95,7 @@ class LocalDatabaseHelper {
         'type': m['type'],
         'description': m['description'],
         'transaction_date': m['transaction_date'],
+        'payment_method_id': m['payment_method_id'],
         'dynamic_metadata': jsonDecode(m['dynamic_metadata'] as String? ?? '{}'),
         'is_synced': m['is_synced'],
       };
@@ -114,6 +117,7 @@ class LocalDatabaseHelper {
         'type': m['type'],
         'description': m['description'],
         'transaction_date': m['transaction_date'],
+        'payment_method_id': m['payment_method_id'],
         'dynamic_metadata': jsonDecode(m['dynamic_metadata'] as String? ?? '{}'),
       };
     }).toList();
