@@ -12,10 +12,10 @@ export const databaseToolDefinitions = [
     name: "get_database_schema",
     description: "Get the current database schema. Use this to understand table structures, columns, and relationships before executing queries. Returns schema for all tables or a specific table.",
     parameters: {
-      type: "object",
+      type: "object" as const,
       properties: {
         table_name: {
-          type: "string",
+          type: "string" as const,
           description: "Optional. Specific table name to get schema for. If not provided, returns all tables."
         }
       }
@@ -25,24 +25,20 @@ export const databaseToolDefinitions = [
     name: "execute_database_query",
     description: "Execute a SQL query on the database. Supports INSERT, UPDATE, DELETE, SELECT, and ALTER TABLE ADD COLUMN operations. All operations are validated for security before execution.",
     parameters: {
-      type: "object",
+      type: "object" as const,
       properties: {
         statement: {
-          type: "string",
+          type: "string" as const,
           description: "The SQL statement to execute. Supported: INSERT, UPDATE, DELETE (with WHERE), SELECT, ALTER TABLE ADD COLUMN."
         },
         table_name: {
-          type: "string",
+          type: "string" as const,
           description: "The target table name for the operation."
         },
         intent: {
-          type: "string",
+          type: "string" as const,
           enum: ["insert", "update", "delete", "select", "alter"],
           description: "The intent/purpose of this query for logging and validation."
-        },
-        user_id: {
-          type: "string",
-          description: "The user ID who initiated this action (for audit logging)."
         }
       },
       required: ["statement", "table_name", "intent"]
@@ -52,7 +48,7 @@ export const databaseToolDefinitions = [
     name: "list_available_tables",
     description: "List all available tables in the database that the AI can query or modify.",
     parameters: {
-      type: "object",
+      type: "object" as const,
       properties: {}
     }
   }
@@ -65,8 +61,8 @@ export const geminiToolDeclarations = databaseToolDefinitions.map(tool => ({
   name: tool.name,
   description: tool.description,
   parameters: {
-    type: "object",
-    properties: tool.parameters.properties,
+    type: "object" as const,
+    properties: tool.parameters.properties as Record<string, any>,
     required: tool.parameters.required || []
   }
 }));
