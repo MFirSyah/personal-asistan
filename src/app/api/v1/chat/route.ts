@@ -589,7 +589,7 @@ DO NOT suggest tool usage for casual conversation or questions about general top
           model: 'gemini-2.0-flash',
           contents: toolCheckPrompt,
           config: {
-            tools: [{ functionDeclarations: geminiToolDeclarations }],
+            tools: [{ functionDeclarations: geminiToolDeclarations as any }],
             temperature: 0.1, // Low temperature for tool decisions
           },
         });

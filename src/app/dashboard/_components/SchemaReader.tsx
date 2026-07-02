@@ -217,7 +217,7 @@ export default function SchemaReader() {
                     <tr>
                       <th>Nama Kolom</th>
                       <th>Tipe Data</th>
-                      <thNullable>Nullable</th>
+                      <th>Nullable</th>
                       <th>Default</th>
                     </tr>
                   </thead>

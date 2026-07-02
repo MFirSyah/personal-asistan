@@ -7,38 +7,41 @@
  * - Get available tables
  */
 
+import { Type } from '@google/genai';
+
+// Define tools in Gemini's expected format
 export const databaseToolDefinitions = [
   {
     name: "get_database_schema",
-    description: "Get the current database schema. Use this to understand table structures, columns, and relationships before executing queries. Returns schema for all tables or a specific table.",
+    description: "Get the current database schema. Use this to understand table structures, columns, and relationships before executing queries.",
     parameters: {
-      type: "object" as const,
+      type: Type.OBJECT,
       properties: {
         table_name: {
-          type: "string" as const,
-          description: "Optional. Specific table name to get schema for. If not provided, returns all tables."
+          type: Type.STRING,
+          description: "Optional. Specific table name to get schema for."
         }
       }
     }
   },
   {
     name: "execute_database_query",
-    description: "Execute a SQL query on the database. Supports INSERT, UPDATE, DELETE, SELECT, and ALTER TABLE ADD COLUMN operations. All operations are validated for security before execution.",
+    description: "Execute a SQL query on the database.",
     parameters: {
-      type: "object" as const,
+      type: Type.OBJECT,
       properties: {
         statement: {
-          type: "string" as const,
-          description: "The SQL statement to execute. Supported: INSERT, UPDATE, DELETE (with WHERE), SELECT, ALTER TABLE ADD COLUMN."
+          type: Type.STRING,
+          description: "The SQL statement to execute."
         },
         table_name: {
-          type: "string" as const,
-          description: "The target table name for the operation."
+          type: Type.STRING,
+          description: "The target table name."
         },
         intent: {
-          type: "string" as const,
+          type: Type.STRING,
           enum: ["insert", "update", "delete", "select", "alter"],
-          description: "The intent/purpose of this query for logging and validation."
+          description: "The intent of this query."
         }
       },
       required: ["statement", "table_name", "intent"]
@@ -46,26 +49,16 @@ export const databaseToolDefinitions = [
   },
   {
     name: "list_available_tables",
-    description: "List all available tables in the database that the AI can query or modify.",
+    description: "List all available tables in the database.",
     parameters: {
-      type: "object" as const,
+      type: Type.OBJECT,
       properties: {}
     }
   }
 ];
 
-/**
- * Tool definitions in Gemini's expected format
- */
-export const geminiToolDeclarations = databaseToolDefinitions.map(tool => ({
-  name: tool.name,
-  description: tool.description,
-  parameters: {
-    type: "object" as const,
-    properties: tool.parameters.properties as Record<string, any>,
-    required: tool.parameters.required || []
-  }
-}));
+// Export for use in chat API
+export const geminiToolDeclarations = databaseToolDefinitions;
 
 /**
  * Rate limiting configuration
