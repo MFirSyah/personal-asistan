@@ -157,9 +157,12 @@ export async function POST(req: NextRequest) {
         'multiple': 'semua data'
       };
 
+      const tableKey = destructiveCheck.table || 'multiple';
+      const actionText = destructiveCheck.intent === 'delete' ? 'HAPUS' : 'UPDATE';
+
       const confirmationMessage = `⚠️ PERHATIAN - AKSI DESTRUKTIF
 
-Anda meminta: ${destructiveCheck.intent === 'delete' ? 'HAPUS' : 'UPDATE'} ${tableNames[destructiveCheck.table] || 'data'}
+Anda meminta: ${actionText} ${tableNames[tableKey] || 'data'}
 
 Ini adalah aksi yang TIDAK DAPAT DIBATALKAN.
 
@@ -177,7 +180,7 @@ Apakah Anda yakin ingin melanjutkan?`;
           table_name: destructiveCheck.table,
           intent: destructiveCheck.intent,
           statement: destructiveCheck.statement,
-          message: `Hapus ${tableNames[destructiveCheck.table] || 'data'}`
+          message: `Hapus ${tableNames[tableKey] || 'data'}`
         }
       });
     }
