@@ -1,16 +1,16 @@
-// ignore_for_file: avoid_print, deprecated_member_use, experimental_member_use, use_build_context_synchronously, unnecessary_import
+// ====================================================================
+// personal_asistan_flutter - Main App Entry Point
+// Arsitektur Reference: 3 Tabs Native
+// Tab 1: Analisis (fl_chart), Tab 2: Chat (AI), Tab 3: Settings
+// ====================================================================
+
 import 'dart:convert';
-import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
-import 'package:uuid/uuid.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -18,8 +18,12 @@ import 'config.dart';
 import 'local_db.dart';
 import 'sync_service.dart';
 import 'notification_service.dart';
+import 'screens/auth_screens.dart';
 
-// Background message handler for FCM
+// ====================================================================
+// APP ENTRY POINT
+// ====================================================================
+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print('FCM Background: ${message.messageId}');
@@ -28,43 +32,41 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
+  // Firebase (optional)
   try {
     await Firebase.initializeApp();
-    // Set background message handler
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    print('Firebase initialized successfully');
   } catch (e) {
-    print('Firebase initialization failed (expected if not configured): $e');
+    print('Firebase init failed (optional): $e');
   }
 
-  // Initialize Supabase client
+  // Supabase
   await Supabase.initialize(
     url: AppConfig.supabaseUrl,
     anonKey: AppConfig.supabaseAnonKey,
   );
 
-  // Initialize offline synchronization background listener
+  // Services
   SyncService.instance.initialize();
-
-  // Initialize notification service
   try {
     await NotificationService().initialize();
-    print('NotificationService initialized');
   } catch (e) {
-    print('NotificationService initialization failed (expected if not configured): $e');
+    print('NotificationService init failed (optional): $e');
   }
 
-  // Initialize Sentry SDK for Layer 12 error tracking
+  // Sentry
   await SentryFlutter.init(
     (options) {
       options.dsn = AppConfig.sentryDsn;
       options.tracesSampleRate = 1.0;
-      options.profilesSampleRate = 1.0;
     },
     appRunner: () => runApp(const MyApp()),
   );
 }
+
+// ====================================================================
+// APP
+// ====================================================================
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -72,27 +74,72 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'personal app',
+      title: 'Personal Asistan',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0B0F19),
-        primaryColor: const Color(0xFF3B82F6),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF3B82F6),
-          secondary: Color(0xFF8B5CF6),
-          surface: Color(0xFF111827),
-          error: Color(0xFFEF4444),
-          onPrimary: Colors.white,
-        ),
-        fontFamily: 'sans-serif',
-      ),
+      theme: _buildTheme(Brightness.dark),
+      darkTheme: _buildTheme(Brightness.dark),
+      themeMode: ThemeMode.dark,
       home: const AuthWrapper(),
+    );
+  }
+
+  ThemeData _buildTheme(Brightness brightness) {
+    return ThemeData(
+      brightness: brightness,
+      scaffoldBackgroundColor: const Color(0xFF0B0F19),
+      primaryColor: const Color(0xFF3B82F6),
+      colorScheme: ColorScheme.dark(
+        primary: const Color(0xFF3B82F6),
+        secondary: const Color(0xFF8B5CF6),
+        surface: const Color(0xFF111827),
+        error: const Color(0xFFEF4444),
+      ),
+      fontFamily: 'sans-serif',
+      useMaterial3: true,
+      cardTheme: CardThemeData(
+        color: const Color(0xFF1F2937),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0x1CFFFFFF)),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: const Color(0xFF111827),
+        indicatorColor: const Color(0xFF3B82F6),
+        labelTextStyle: WidgetStateProperty.all(
+          const TextStyle(fontSize: 12),
+        ),
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xFF0B0F19),
+        elevation: 0,
+        centerTitle: true,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFF1F2937),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFF3B82F6),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
     );
   }
 }
 
-// Wrapper class to check Supabase login status and direct user
+// ====================================================================
+// AUTH WRAPPER
+// ====================================================================
+
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -109,17 +156,18 @@ class _AuthWrapperState extends State<AuthWrapper> {
   void initState() {
     super.initState();
     _checkAuthAndProfile();
-    // Listen for auth state changes
-    Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (mounted) {
         final newUser = data.session?.user;
         if (newUser != null) {
-          // Cek apakah user sudah punya profile
-          final hasProfile = await _checkUserHasProfile(newUser.id);
-          setState(() {
-            _user = newUser;
-            _needsProfileSetup = !hasProfile;
-            _isLoading = false;
+          _checkUserHasProfile(newUser.id).then((hasProfile) {
+            if (mounted) {
+              setState(() {
+                _user = newUser;
+                _needsProfileSetup = !hasProfile;
+                _isLoading = false;
+              });
+            }
           });
         } else {
           setState(() {
@@ -141,7 +189,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
           .maybeSingle();
       return res != null;
     } catch (e) {
-      print("Error checking profile: $e");
       return false;
     }
   }
@@ -177,1362 +224,34 @@ class _AuthWrapperState extends State<AuthWrapper> {
     }
 
     if (_user != null && _needsProfileSetup) {
-      // User login tapi belum punya profile - tampilkan form setup
       return const ProfileSetupScreen();
     }
 
-    return _user != null ? const DashboardNavigatorScreen() : const LoginRegisterScreen();
+    return _user != null
+        ? const MainNavigatorScreen()
+        : const LoginRegisterScreen();
   }
 }
 
-// --- Layer 1 & 4: Authentication & Login/Registration Screen ---
-class LoginRegisterScreen extends StatefulWidget {
-  const LoginRegisterScreen({super.key});
+// ====================================================================
+// MAIN NAVIGATOR - 3 TABS
+// ====================================================================
+
+class MainNavigatorScreen extends StatefulWidget {
+  const MainNavigatorScreen({super.key});
 
   @override
-  State<LoginRegisterScreen> createState() => _LoginRegisterScreenState();
+  State<MainNavigatorScreen> createState() => _MainNavigatorScreenState();
 }
 
-class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
-  final _formKeyLogin = GlobalKey<FormState>();
-  final _formKeyProfile = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  bool _isRegister = false;
-  bool _isLoading = false;
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
-  String _errorMsg = '';
+class _MainNavigatorScreenState extends State<MainNavigatorScreen> {
+  int _currentIndex = 1; // Start on Chat tab
 
-  // State untuk form 2 (profile setup)
-  bool _showProfileSetup = false;
-  String? _pendingUserId;
-  String? _pendingEmail;
-  final _usernameController = TextEditingController();
-  final _assistantNameController = TextEditingController();
-  String _selectedEgo = 'witty_sidekick';
-
-  final List<Map<String, dynamic>> _egoOptions = [
-    {'id': 'witty_sidekick', 'name': 'Personal Asistan', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
-    {'id': 'wise_mentor', 'name': 'Guru Bijak', 'desc': 'Bijak & Inspiratif', 'icon': Icons.school},
-    {'id': 'efficient_executive', 'name': 'Eksekutif', 'desc': 'Tegas & Produktif', 'icon': Icons.work},
-    {'id': 'creative_companion', 'name': 'Sahabat Kreatif', 'desc': 'Kreatif & Supportif', 'icon': Icons.lightbulb},
-    {'id': 'calm_balancer', 'name': 'Penyeimbang', 'desc': 'Tenang & Empati', 'icon': Icons.spa},
+  final List<Widget> _screens = [
+    const AnalisisTab(),
+    const ChatTab(),
+    const SettingsTab(),
   ];
-
-  Future<void> _submit() async {
-    if (!_formKeyLogin.currentState!.validate()) return;
-    setState(() {
-      _isLoading = true;
-      _errorMsg = '';
-    });
-
-    try {
-      final supabase = Supabase.instance.client;
-      if (_isRegister) {
-        // ========== REGISTER MODE ==========
-        try {
-          final res = await supabase.auth.signUp(
-            email: _emailController.text.trim(),
-            password: _passwordController.text,
-          );
-
-          print("SignUp response: user=${res.user?.id}, session=${res.session != null}");
-
-          if (res.user != null) {
-            // Simpan userId dan email untuk form setup profile
-            _pendingUserId = res.user!.id;
-            _pendingEmail = _emailController.text.trim();
-
-            if (res.session != null) {
-              // Langsung login (Confirm Email OFF)
-              // Tampilkan form setup profile
-              setState(() {
-                _showProfileSetup = true;
-                _isLoading = false;
-              });
-              return;
-            } else {
-              // Perlu email confirmation
-              setState(() {
-                _errorMsg = '✅ Pendaftaran berhasil! Cek email untuk verifikasi akun.';
-              });
-              return;
-            }
-          }
-        } on AuthException catch (e) {
-          final msg = e.message.toLowerCase();
-          if (msg.contains('already registered') || msg.contains('already exists')) {
-            throw Exception('📝 Email ini sudah terdaftar.');
-          } else if (msg.contains('weak password') || msg.contains('password')) {
-            throw Exception('🔒 Password terlalu lemah. Minimal 6 karakter.');
-          } else {
-            throw Exception('📝 Gagal mendaftar: ${e.message}');
-          }
-        }
-      } else {
-        // ========== LOGIN MODE ==========
-        try {
-          final authResponse = await supabase.auth.signInWithPassword(
-            email: _emailController.text.trim(),
-            password: _passwordController.text,
-          );
-
-          print("Login response: user=${authResponse.user?.id}, confirmed=${authResponse.user?.emailConfirmedAt}, session=${authResponse.session != null}");
-
-          if (authResponse.user != null) {
-            print("Login successful for user: ${authResponse.user!.email}");
-            return;
-          }
-
-          throw Exception('Login gagal. Silakan coba lagi.');
-        } on AuthException catch (e) {
-          final msg = e.message.toLowerCase();
-          print("AuthException during login: ${e.message}");
-          if (msg.contains('invalid login credentials') || msg.contains('invalid credentials')) {
-            throw Exception('🔐 Email atau password salah.');
-          } else if (msg.contains('user not found') || msg.contains('email not found')) {
-            throw Exception('📧 Akun belum terdaftar.');
-          } else if (msg.contains('email not confirmed')) {
-            throw Exception('📧 Email belum diverifikasi.');
-          } else {
-            throw Exception('🔐 Terjadi kesalahan: ${e.message}');
-          }
-        }
-      }
-    } catch (e) {
-      String friendlyMessage = _getFriendlyErrorMessage(e);
-      setState(() {
-        _errorMsg = friendlyMessage;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _submitProfileSetup() async {
-    if (!_formKeyProfile.currentState!.validate()) return;
-    if (_pendingUserId == null) {
-      setState(() {
-        _errorMsg = '⚠️ Sesi habis. Silakan daftar ulang.';
-        _showProfileSetup = false;
-      });
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _errorMsg = '';
-    });
-
-    try {
-      final supabase = Supabase.instance.client;
-
-      // Update user metadata
-      await supabase.auth.updateUser(UserAttributes(
-        data: {
-          'user_nickname': _usernameController.text.trim().split(' ')[0],
-        },
-      ));
-
-      // Create user profile
-      final selectedEgoData = _egoOptions.firstWhere((e) => e['id'] == _selectedEgo);
-
-      await supabase.from('user_profiles').upsert({
-        'id': _pendingUserId,
-        'fullname': _usernameController.text.trim(),
-        'user_nickname': _usernameController.text.trim().split(' ')[0],
-        'selected_personality': _selectedEgo,
-        'assistant_name': _assistantNameController.text.trim().isNotEmpty
-            ? _assistantNameController.text.trim()
-            : selectedEgoData['name'],
-      });
-
-      print("Profile setup successful for user: $_pendingEmail");
-
-      // Reset state
-      _pendingUserId = null;
-      _pendingEmail = null;
-      _usernameController.clear();
-      _emailController.clear();
-      _passwordController.clear();
-      _confirmPasswordController.clear();
-      _selectedEgo = 'witty_sidekick';
-      _showProfileSetup = false;
-      _isRegister = false;
-
-    } catch (e) {
-      String friendlyMessage = _getFriendlyErrorMessage(e);
-      setState(() {
-        _errorMsg = friendlyMessage;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _skipProfileSetup() {
-    setState(() {
-      _pendingUserId = null;
-      _pendingEmail = null;
-      _usernameController.clear();
-      _assistantNameController.clear();
-      _showProfileSetup = false;
-      _isRegister = false;
-    });
-  }
-
-  /// Maps backend errors to user-friendly professional messages
-  String _getFriendlyErrorMessage(dynamic error) {
-    final errorStr = error.toString().toLowerCase();
-
-    // Auth errors
-    if (errorStr.contains('invalid login credentials') ||
-        errorStr.contains('invalid credentials') ||
-        errorStr.contains('wrong password') ||
-        errorStr.contains('password')) {
-      return '🔐 Email atau kata sandi yang Anda masukkan salah. Silakan coba lagi.';
-    }
-
-    if (errorStr.contains('email not found') ||
-        errorStr.contains('user not found') ||
-        errorStr.contains('not found')) {
-      return '📧 Akun dengan email ini belum terdaftar. Silakan daftar terlebih dahulu.';
-    }
-
-    if (errorStr.contains('already registered') ||
-        errorStr.contains('already exists')) {
-      return '📝 Akun dengan email ini sudah terdaftar. Silakan login atau gunakan email lain.';
-    }
-
-    if (errorStr.contains('email not confirmed') ||
-        errorStr.contains('confirm') ||
-        errorStr.contains('verification')) {
-      return '✅ Email Anda belum diverifikasi. Silakan cek inbox atau folder spam untuk email verifikasi.';
-    }
-
-    if (errorStr.contains('weak password') ||
-        errorStr.contains('password too short') ||
-        errorStr.contains('invalid format')) {
-      return '🔒 Kata sandi terlalu lemah. Minimal 6 karakter dengan kombinasi huruf dan angka.';
-    }
-
-    if (errorStr.contains('rate limit') ||
-        errorStr.contains('too many request')) {
-      return '⏳ Terlalu banyak percobaan. Silakan tunggu beberapa saat sebelum mencoba lagi.';
-    }
-
-    if (errorStr.contains('network') ||
-        errorStr.contains('connection') ||
-        errorStr.contains('timeout') ||
-        errorStr.contains('socket')) {
-      return '🌐 Koneksi internet bermasalah. Silakan periksa jaringan Anda dan coba lagi.';
-    }
-
-    // API errors
-    if (errorStr.contains('429')) {
-      return '⏳ Server sedang sibuk. Silakan tunggu sebentar dan coba lagi.';
-    }
-
-    if (errorStr.contains('500') ||
-        errorStr.contains('internal server')) {
-      return '🔧 Server sedang maintenance. Silakan coba lagi dalam beberapa menit.';
-    }
-
-    if (errorStr.contains('401') ||
-        errorStr.contains('unauthorized')) {
-      return '🔑 Sesi Anda telah berakhir. Silakan logout dan login kembali.';
-    }
-
-    if (errorStr.contains('403') ||
-        errorStr.contains('forbidden')) {
-      return '🚫 Akses ditolak. Silakan hubungi tim support jika masalah berlanjut.';
-    }
-
-    // Database/storage errors
-    if (errorStr.contains('duplicate') ||
-        errorStr.contains('unique constraint')) {
-      return '📋 Data sudah ada sebelumnya. Silakan refresh halaman dan coba lagi.';
-    }
-
-    // Default fallback - generic professional message
-    return '⚠️ Terjadi kesalahan yang tidak terduga. Silakan coba lagi atau hubungi support.';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Background ambient tech glow elements
-          Positioned(
-            top: -100,
-            left: -100,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF3B82F6).withOpacity(0.15),
-                    blurRadius: 100,
-                  )
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -150,
-            right: -100,
-            child: Container(
-              width: 400,
-              height: 400,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.1),
-                    blurRadius: 150,
-                  )
-                ],
-              ),
-            ),
-          ),
-          // Form Content
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: _showProfileSetup
-                    ? _buildProfileSetupForm()
-                    : _buildLoginRegisterForm(),
-              ),
-            ),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLoginRegisterForm() {
-    return Container(
-      key: const ValueKey('login_register'),
-      padding: const EdgeInsets.all(28.0),
-      decoration: BoxDecoration(
-        color: const Color(0xCC111827),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0x1CFFFFFF), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.4),
-            blurRadius: 30,
-            offset: const Offset(0, 10),
-          )
-        ],
-      ),
-      child: Form(
-        key: _formKeyLogin,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header Logo & Title
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF3B82F6).withOpacity(0.3),
-                        blurRadius: 10,
-                      )
-                    ],
-                  ),
-                  child: const Icon(Icons.rocket_launch, size: 28, color: Colors.white),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Personal Asistan',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.0,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _isRegister ? 'Buat akun kognitif Anda' : 'Masuk ke Asisten Pribadi',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey, fontSize: 14),
-            ),
-            const SizedBox(height: 24),
-            if (_errorMsg.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEF4444).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
-                ),
-                child: Text(
-                  _errorMsg,
-                  style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13),
-                ),
-              ),
-            TextFormField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: _inputDecoration('Email', Icons.email),
-              validator: (val) => val == null || !val.contains('@') ? 'Email tidak valid' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _passwordController,
-              obscureText: _obscurePassword,
-              decoration: _inputDecoration(
-                'Password',
-                Icons.lock,
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                    color: Colors.grey,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _obscurePassword = !_obscurePassword;
-                    });
-                  },
-                ),
-              ),
-              validator: (val) => val == null || val.length < 6 ? 'Password minimal 6 karakter' : null,
-            ),
-            if (_isRegister) ...[
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _confirmPasswordController,
-                obscureText: _obscureConfirmPassword,
-                decoration: _inputDecoration(
-                  'Konfirmasi Password',
-                  Icons.lock_outline,
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
-                      color: Colors.grey,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _obscureConfirmPassword = !_obscureConfirmPassword;
-                      });
-                    },
-                  ),
-                ),
-                validator: (val) {
-                  if (val == null || val.isEmpty) {
-                    return 'Konfirmasi password wajib diisi';
-                  }
-                  if (val != _passwordController.text) {
-                    return 'Password tidak cocok';
-                  }
-                  return null;
-                },
-              ),
-            ],
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _submit,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: const Color(0xFF3B82F6),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: 3,
-                shadowColor: const Color(0xFF3B82F6).withOpacity(0.4),
-              ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                    )
-                  : Text(
-                      _isRegister ? 'DAFTAR' : 'MASUK CEPAT',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.0, color: Colors.white),
-                    ),
-            ),
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _isRegister = !_isRegister;
-                  _errorMsg = '';
-                });
-              },
-              child: Text(
-                _isRegister ? 'Sudah punya akun? Login disini' : 'Belum punya akun? Daftar gratis',
-                style: const TextStyle(color: Color(0xFF3B82F6)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfileSetupForm() {
-    return Container(
-      key: const ValueKey('profile_setup'),
-      padding: const EdgeInsets.all(28.0),
-      decoration: BoxDecoration(
-        color: const Color(0xCC111827),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0x1CFFFFFF), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.4),
-            blurRadius: 30,
-            offset: const Offset(0, 10),
-          )
-        ],
-      ),
-      child: Form(
-        key: _formKeyProfile,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF3B82F6).withOpacity(0.3),
-                        blurRadius: 10,
-                      )
-                    ],
-                  ),
-                  child: const Icon(Icons.person_add, size: 28, color: Colors.white),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Lengkapi Profil',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.0,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Isi data di bawah untuk melanjutkan',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 14),
-            ),
-            const SizedBox(height: 24),
-            if (_errorMsg.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEF4444).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
-                ),
-                child: Text(
-                  _errorMsg,
-                  style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13),
-                ),
-              ),
-            // Nama User Field
-            TextFormField(
-              controller: _usernameController,
-              decoration: _inputDecoration('Nama User', Icons.person),
-              validator: (val) => val == null || val.trim().isEmpty ? 'Nama user wajib diisi' : null,
-            ),
-            const SizedBox(height: 16),
-            // Nama AI Field
-            TextFormField(
-              controller: _assistantNameController,
-              decoration: _inputDecoration('Nama AI', Icons.smart_toy),
-              validator: (val) => val == null || val.trim().isEmpty ? 'Nama AI wajib diisi' : null,
-            ),
-            const SizedBox(height: 20),
-            // Ego Selection
-            const Text(
-              'Pilih Karakter AI Anda',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ..._egoOptions.map((ego) => _buildEgoOption(ego)),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _submitProfileSetup,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: const Color(0xFF3B82F6),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: 3,
-                shadowColor: const Color(0xFF3B82F6).withOpacity(0.4),
-              ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                    )
-                  : const Text(
-                      'LANJUTKAN',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.0, color: Colors.white),
-                    ),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: _skipProfileSetup,
-              child: const Text(
-                'Lewati untuk saat ini',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEgoOption(Map<String, dynamic> ego) {
-    final isSelected = _selectedEgo == ego['id'];
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedEgo = ego['id'];
-        });
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.15) : const Color(0xFF0F172A),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF3B82F6) : const Color(0x33FFFFFF),
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.3) : const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                ego['icon'] as IconData,
-                color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ego['name'] as String,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.grey[300],
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      fontSize: 14,
-                    ),
-                  ),
-                  Text(
-                    ego['desc'] as String,
-                    style: TextStyle(
-                      color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (isSelected)
-              const Icon(Icons.check_circle, color: Color(0xFF3B82F6), size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
-  InputDecoration _inputDecoration(String label, IconData icon, {Widget? suffixIcon}) {
-    return InputDecoration(
-      labelText: label,
-      prefixIcon: Icon(icon, color: const Color(0xFF3B82F6)),
-      suffixIcon: suffixIcon,
-      labelStyle: const TextStyle(color: Colors.grey),
-      filled: true,
-      fillColor: const Color(0xFF0F172A),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0x33FFFFFF)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFF3B82F6)),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFEF4444)),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFEF4444)),
-      ),
-    );
-  }
-}
-
-// --- Profile Setup Screen (dipisah jadi screen standalone) ---
-class ProfileSetupScreen extends StatefulWidget {
-  const ProfileSetupScreen({super.key});
-
-  @override
-  State<ProfileSetupScreen> createState() => _ProfileSetupScreenState();
-}
-
-class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
-  final _assistantNameController = TextEditingController();
-  bool _isLoading = false;
-  String _selectedEgo = 'witty_sidekick';
-  String _errorMsg = '';
-
-  final List<Map<String, dynamic>> _egoOptions = [
-    {'id': 'witty_sidekick', 'name': 'Personal Asistan', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
-    {'id': 'wise_mentor', 'name': 'Guru Bijak', 'desc': 'Bijak & Inspiratif', 'icon': Icons.school},
-    {'id': 'efficient_executive', 'name': 'Eksekutif', 'desc': 'Tegas & Produktif', 'icon': Icons.work},
-    {'id': 'creative_companion', 'name': 'Sahabat Kreatif', 'desc': 'Kreatif & Supportif', 'icon': Icons.lightbulb},
-    {'id': 'calm_balancer', 'name': 'Penyeimbang', 'desc': 'Tenang & Empati', 'icon': Icons.spa},
-  ];
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
-      setState(() {
-        _errorMsg = '⚠️ Sesi habis. Silakan login ulang.';
-      });
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _errorMsg = '';
-    });
-
-    try {
-      final supabase = Supabase.instance.client;
-
-      // Update user metadata
-      await supabase.auth.updateUser(UserAttributes(
-        data: {
-          'user_nickname': _usernameController.text.trim().split(' ')[0],
-        },
-      ));
-
-      // Create user profile
-      final selectedEgoData = _egoOptions.firstWhere((e) => e['id'] == _selectedEgo);
-
-      await supabase.from('user_profiles').upsert({
-        'id': user.id,
-        'fullname': _usernameController.text.trim(),
-        'user_nickname': _usernameController.text.trim().split(' ')[0],
-        'selected_personality': _selectedEgo,
-        'assistant_name': _assistantNameController.text.trim().isNotEmpty
-            ? _assistantNameController.text.trim()
-            : selectedEgoData['name'],
-      });
-
-      print("Profile setup successful for user: ${user.email}");
-
-      // Navigate to Dashboard
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardNavigatorScreen()),
-        );
-      }
-
-    } catch (e) {
-      String friendlyMessage = _getFriendlyErrorMessage(e);
-      setState(() {
-        _errorMsg = friendlyMessage;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _skip() async {
-    // Create minimal profile with defaults
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      await Supabase.instance.client.from('user_profiles').upsert({
-        'id': user.id,
-        'fullname': user.email?.split('@')[0] ?? 'Pengguna',
-        'user_nickname': user.email?.split('@')[0] ?? 'Pengguna',
-        'selected_personality': 'witty_sidekick',
-        'assistant_name': 'Personal Asistan',
-      });
-
-      print("Profile skipped - using defaults");
-
-      // Navigate to Dashboard
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardNavigatorScreen()),
-        );
-      }
-
-    } catch (e) {
-      print("Skip profile setup error: $e");
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  String _getFriendlyErrorMessage(dynamic error) {
-    final errorStr = error.toString().toLowerCase();
-    if (errorStr.contains('duplicate') || errorStr.contains('unique constraint')) {
-      return '📋 Profile sudah ada. Silakan refresh.';
-    }
-    if (errorStr.contains('network') || errorStr.contains('connection')) {
-      return '🌐 Koneksi bermasalah. Coba lagi.';
-    }
-    return '⚠️ Terjadi kesalahan. Coba lagi.';
-  }
-
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Background glow
-          Positioned(
-            top: -100,
-            left: -100,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF3B82F6).withOpacity(0.15),
-                    blurRadius: 100,
-                  )
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -150,
-            right: -100,
-            child: Container(
-              width: 400,
-              height: 400,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.1),
-                    blurRadius: 150,
-                  )
-                ],
-              ),
-            ),
-          ),
-          // Content
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Container(
-                padding: const EdgeInsets.all(28.0),
-                decoration: BoxDecoration(
-                  color: const Color(0xCC111827),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0x1CFFFFFF), width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
-                      blurRadius: 30,
-                      offset: const Offset(0, 10),
-                    )
-                  ],
-                ),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Header
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF3B82F6).withOpacity(0.3),
-                                  blurRadius: 10,
-                                )
-                              ],
-                            ),
-                            child: const Icon(Icons.person_add, size: 28, color: Colors.white),
-                          ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'Lengkapi Profil',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.0,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Isi data di bawah untuk melanjutkan',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey, fontSize: 14),
-                      ),
-                      const SizedBox(height: 24),
-                      if (_errorMsg.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          margin: const EdgeInsets.only(bottom: 16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEF4444).withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
-                          ),
-                          child: Text(
-                            _errorMsg,
-                            style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13),
-                          ),
-                        ),
-                      // Nama User Field
-                      TextFormField(
-                        controller: _usernameController,
-                        decoration: InputDecoration(
-                          labelText: 'Nama User',
-                          prefixIcon: const Icon(Icons.person, color: Color(0xFF3B82F6)),
-                          labelStyle: const TextStyle(color: Colors.grey),
-                          filled: true,
-                          fillColor: const Color(0xFF0F172A),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0x33FFFFFF)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFF3B82F6)),
-                          ),
-                          errorBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFFEF4444)),
-                          ),
-                        ),
-                        validator: (val) => val == null || val.trim().isEmpty ? 'Nama user wajib diisi' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      // Nama AI Field
-                      TextFormField(
-                        controller: _assistantNameController,
-                        decoration: InputDecoration(
-                          labelText: 'Nama AI',
-                          prefixIcon: const Icon(Icons.smart_toy, color: Color(0xFF8B5CF6)),
-                          labelStyle: const TextStyle(color: Colors.grey),
-                          filled: true,
-                          fillColor: const Color(0xFF0F172A),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0x33FFFFFF)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFF8B5CF6)),
-                          ),
-                          errorBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFFEF4444)),
-                          ),
-                        ),
-                        validator: (val) => val == null || val.trim().isEmpty ? 'Nama AI wajib diisi' : null,
-                      ),
-                      const SizedBox(height: 20),
-                      // Ego Selection
-                      const Text(
-                        'Pilih Karakter AI Anda',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ..._egoOptions.map((ego) => _buildEgoOption(ego)),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: _isLoading ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: const Color(0xFF3B82F6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          elevation: 3,
-                          shadowColor: const Color(0xFF3B82F6).withOpacity(0.4),
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                              )
-                            : const Text(
-                                'LANJUTKAN',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.0, color: Colors.white),
-                              ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextButton(
-                        onPressed: _isLoading ? null : _skip,
-                        child: const Text(
-                          'Lewati untuk saat ini',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEgoOption(Map<String, dynamic> ego) {
-    final isSelected = _selectedEgo == ego['id'];
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedEgo = ego['id'];
-        });
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.15) : const Color(0xFF0F172A),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF3B82F6) : const Color(0x33FFFFFF),
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.3) : const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                ego['icon'] as IconData,
-                color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ego['name'] as String,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.grey[300],
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      fontSize: 14,
-                    ),
-                  ),
-                  Text(
-                    ego['desc'] as String,
-                    style: TextStyle(
-                      color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (isSelected)
-              const Icon(Icons.check_circle, color: Color(0xFF3B82F6), size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// --- Main Container with bottom tabs ---
-class DashboardNavigatorScreen extends StatefulWidget {
-  const DashboardNavigatorScreen({super.key});
-
-  @override
-  State<DashboardNavigatorScreen> createState() => _DashboardNavigatorScreenState();
-}
-
-class _DashboardNavigatorScreenState extends State<DashboardNavigatorScreen> {
-  int _currentIndex = 0;
-  final GlobalKey<_NativeChatScreenState> _chatScreenKey = GlobalKey<_NativeChatScreenState>();
-  bool _briefingChecked = false;
-
-  late final List<Widget> _screens;
-
-  @override
-  void initState() {
-    super.initState();
-    _screens = [
-      const WebAppDashboardScreen(),
-      NativeChatScreen(key: _chatScreenKey),
-      const NativeSettingsScreen(),
-    ];
-
-    // Set up notification handlers
-    _setupNotificationHandlers();
-
-    // Check morning briefing after first frame renders
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkMorningBriefing());
-  }
-
-  void _setupNotificationHandlers() {
-    NotificationService().setHandlers(
-      onBriefing: (data) {
-        if (data['data']?['content'] != null && mounted) {
-          _showBriefingPopup(data['data']['content']);
-        }
-      },
-      onTask: (taskId) {
-        // Navigate to task tab
-        setState(() {
-          _currentIndex = 2; // Settings tab (could be tasks tab)
-        });
-      },
-      onChat: () {
-        // Navigate to chat tab
-        setState(() {
-          _currentIndex = 1;
-        });
-      },
-      onTransaction: (txId) {
-        // Navigate to dashboard
-        setState(() {
-          _currentIndex = 0;
-        });
-      },
-    );
-  }
-
-  Future<void> _checkMorningBriefing() async {
-    if (_briefingChecked) return;
-    _briefingChecked = true;
-    try {
-      final session = Supabase.instance.client.auth.currentSession;
-      if (session == null) return;
-
-      // Check if user has any data (transactions, tasks, or chat history)
-      // If user is new with no data, skip morning briefing
-      final hasTransactions = await LocalDatabaseHelper.instance.getTransactions();
-      final hasTasks = await LocalDatabaseHelper.instance.getTasks();
-      final hasChatHistory = await LocalDatabaseHelper.instance.getChatMessages(null);
-
-      // Skip briefing if user has no data at all
-      if (hasTransactions.isEmpty && hasTasks.isEmpty && hasChatHistory.isEmpty) {
-        print('New user detected - skipping morning briefing (no data available)');
-        return;
-      }
-
-      // Get user timezone
-      final userTimezone = DateTime.now().timeZoneName;
-      final timezoneMap = {
-        'WIB': 'Asia/Jakarta',
-        'WITA': 'Asia/Makassar',
-        'WIT': 'Asia/Jayapura',
-      };
-      final mappedTimezone = timezoneMap[userTimezone] ?? 'Asia/Jakarta';
-
-      final response = await http.get(
-        Uri.parse('${AppConfig.activeUrl}/api/v1/briefing?timezone=${Uri.encodeComponent(mappedTimezone)}'),
-        headers: {
-          'x-jarvis-gateway-key': AppConfig.gatewayKey,
-          'Authorization': 'Bearer ${session.accessToken}',
-        },
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['show_briefing'] == true && data['briefing_text'] != null && mounted) {
-          _showBriefingPopup(data['briefing_text']);
-        }
-      }
-    } catch (e) {
-      print('Morning briefing check error: $e');
-    }
-  }
-
-  void _showBriefingPopup(String briefingText) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.7),
-      builder: (ctx) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-        child: Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 400, maxHeight: 500),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.3)),
-              boxShadow: [
-                BoxShadow(color: const Color(0xFF3B82F6).withOpacity(0.15), blurRadius: 30, spreadRadius: 5),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.1))),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF3B82F6).withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.wb_sunny_rounded, color: Color(0xFFFBBF24), size: 24),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text('Morning Briefing ☀️', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                ),
-                // Content
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: Text(briefingText, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.6)),
-                  ),
-                ),
-                // Button
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(Icons.favorite, size: 18),
-                      label: const Text('Terima Kasih', style: TextStyle(fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF3B82F6),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1541,370 +260,555 @@ class _DashboardNavigatorScreenState extends State<DashboardNavigatorScreen> {
         index: _currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-          if (index == 1) {
-            _chatScreenKey.currentState?._loadProfileAndChatCache();
-          }
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (index) {
+          setState(() => _currentIndex = index);
         },
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: const Color(0xFF0B0F19),
-        selectedItemColor: const Color(0xFF3B82F6),
-        unselectedItemColor: Colors.grey,
-        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-        unselectedLabelStyle: const TextStyle(fontSize: 11),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard_rounded), label: 'Dasbor'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_rounded), label: 'Chat'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings_rounded), label: 'Profil'),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.analytics_outlined),
+            selectedIcon: Icon(Icons.analytics),
+            label: 'Analisis',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble),
+            label: 'Chat',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Setting',
+          ),
         ],
       ),
     );
   }
 }
 
-// --- Tab 1: WebApp Dashboard WebView + Token postMessage (Layer 5) ---
-class WebAppDashboardScreen extends StatefulWidget {
-  const WebAppDashboardScreen({super.key});
+// ====================================================================
+// TAB 1: ANALISIS
+// ====================================================================
+
+class AnalisisTab extends StatefulWidget {
+  const AnalisisTab({super.key});
 
   @override
-  State<WebAppDashboardScreen> createState() => _WebAppDashboardScreenState();
+  State<AnalisisTab> createState() => _AnalisisTabState();
 }
 
-class _WebAppDashboardScreenState extends State<WebAppDashboardScreen> {
-  InAppWebViewController? _webViewController;
+class _AnalisisTabState extends State<AnalisisTab> {
   bool _isLoading = true;
-  double _progress = 0.0;
-  bool _systemStatus = false; // false = offline (red), true = online (green)
-  DateTime? _lastStatusCheck;
-
-  String get _currentUrl => AppConfig.activeUrl;
+  double _income = 0;
+  double _expense = 0;
+  int _pendingTasks = 0;
+  List<Map<String, dynamic>> _transactions = [];
 
   @override
   void initState() {
     super.initState();
-    _checkSystemStatus();
+    _loadData();
   }
 
-  Future<void> _checkSystemStatus() async {
-    final now = DateTime.now();
-    // Debounce check - only check if last check was more than 30 seconds ago
-    if (_lastStatusCheck != null &&
-        now.difference(_lastStatusCheck!).inSeconds < 30) {
-      return;
-    }
-    _lastStatusCheck = now;
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
 
     try {
-      final session = Supabase.instance.client.auth.currentSession;
-      if (session == null) {
-        if (mounted) setState(() => _systemStatus = false);
-        return;
-      }
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
 
-      // Quick ping to Supabase to check connection
-      final startTime = DateTime.now();
-      await Supabase.instance.client
-          .from('user_profiles')
+      final now = DateTime.now();
+      final startOfMonth = DateTime(now.year, now.month, 1);
+      final monthStr = startOfMonth.toIso8601String().split('T')[0];
+
+      // Income
+      final incomeRes = await Supabase.instance.client
+          .from('money_trackers')
+          .select('amount')
+          .eq('user_id', userId)
+          .eq('type', 'income')
+          .gte('transaction_date', monthStr);
+      final income = (incomeRes as List)
+          .fold<double>(0, (sum, item) => sum + (item['amount'] as num).toDouble());
+
+      // Expense
+      final expenseRes = await Supabase.instance.client
+          .from('money_trackers')
+          .select('amount')
+          .eq('user_id', userId)
+          .eq('type', 'expense')
+          .gte('transaction_date', monthStr);
+      final expense = (expenseRes as List)
+          .fold<double>(0, (sum, item) => sum + (item['amount'] as num).toDouble());
+
+      // Pending tasks
+      final tasksRes = await Supabase.instance.client
+          .from('todo_lists')
           .select('id')
-          .limit(1)
-          .maybeSingle();
-      final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+          .eq('user_id', userId)
+          .eq('status', 'pending');
+
+      // Recent transactions
+      final txRes = await Supabase.instance.client
+          .from('money_trackers')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(20);
 
       if (mounted) {
         setState(() {
-          // Consider online if response is under 2 seconds
-          _systemStatus = elapsed < 2000;
+          _income = income;
+          _expense = expense;
+          _pendingTasks = (tasksRes as List).length;
+          _transactions = List<Map<String, dynamic>>.from(txRes as List);
+          _isLoading = false;
         });
       }
     } catch (e) {
-      print("System status check failed: $e");
-      if (mounted) setState(() => _systemStatus = false);
+      print('Error loading data: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  Future<void> _injectSessionHandshake() async {
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session == null || _webViewController == null) return;
-
-    print("Executing postMessage token handshake in WebView.");
-    final jsCode = """
-      window.dispatchEvent(new MessageEvent('message', {
-        data: {
-          type: 'SESSION_TOKENS',
-          access_token: '${session.accessToken}',
-          refresh_token: '${session.refreshToken}'
-        }
-      }));
-    """;
-    
-    // Inject multiple times/delays to ensure dashboard listener is fully initialized
-    await _webViewController!.evaluateJavascript(source: jsCode);
-    Future.delayed(const Duration(milliseconds: 500), () {
-      _webViewController?.evaluateJavascript(source: jsCode);
-    });
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      _webViewController?.evaluateJavascript(source: jsCode);
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    const Text('Dashboard Analitis', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                    const SizedBox(width: 8),
-                    // System Status Indicator (like BCA mobile)
-                    GestureDetector(
-                      onTap: _checkSystemStatus,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: _systemStatus
-                              ? const Color(0xFF10B981).withOpacity(0.2)
-                              : const Color(0xFFEF4444).withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _systemStatus
-                                ? const Color(0xFF10B981).withOpacity(0.5)
-                                : const Color(0xFFEF4444).withOpacity(0.5),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: _systemStatus
-                                    ? const Color(0xFF10B981)
-                                    : const Color(0xFFEF4444),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: (_systemStatus
-                                            ? const Color(0xFF10B981)
-                                            : const Color(0xFFEF4444))
-                                        .withOpacity(0.5),
-                                    blurRadius: 4,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _systemStatus ? 'DB Aktif' : 'Offline',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: _systemStatus
-                                    ? const Color(0xFF10B981)
-                                    : const Color(0xFFEF4444),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-        centerTitle: false,
-        backgroundColor: const Color(0xFF0F172A),
-        elevation: 0,
+        title: const Text('Analisis'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              setState(() {
-                _isLoading = true;
-              });
-              _webViewController?.reload();
-              _checkSystemStatus();
-            },
-          )
+            onPressed: _loadData,
+          ),
         ],
       ),
-      body: Stack(
-        children: [
-          InAppWebView(
-            initialUrlRequest: URLRequest(url: WebUri("$_currentUrl/dashboard?from=mobile")),
-            initialSettings: InAppWebViewSettings(
-              javaScriptEnabled: true,
-              domStorageEnabled: true,
-              useWideViewPort: true,
-              loadWithOverviewMode: true,
-              clearCache: true,
-            ),
-            onWebViewCreated: (controller) {
-              _webViewController = controller;
-            },
-            onConsoleMessage: (controller, consoleMessage) {
-              print("[WebView Console] ${consoleMessage.messageLevel}: ${consoleMessage.message}");
-            },
-            onReceivedError: (controller, request, error) {
-              print("[WebView Error] ${error.description} (code: ${error.type})");
-            },
-            onReceivedHttpError: (controller, request, errorResponse) {
-              print("[WebView HTTP Error] URL: ${request.url}, Status code: ${errorResponse.statusCode}");
-            },
-            onLoadStop: (controller, url) async {
-              setState(() {
-                _isLoading = false;
-              });
-              // Perform the secure postMessage credentials transmission
-              await _injectSessionHandshake();
-            },
-            onProgressChanged: (controller, progress) {
-              setState(() {
-                _progress = progress / 100;
-              });
-            },
-          ),
-          if (_isLoading)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: LinearProgressIndicator(
-                value: _progress,
-                color: const Color(0xFF3B82F6),
-                backgroundColor: const Color(0xFF0F172A),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _loadData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSummaryCards(),
+                    const SizedBox(height: 24),
+                    _buildExpenseChart(),
+                    const SizedBox(height: 24),
+                    _buildRecentTransactions(),
+                    const SizedBox(height: 24),
+                    _buildTasksSection(),
+                  ],
+                ),
               ),
             ),
-        ],
+    );
+  }
+
+  Widget _buildSummaryCards() {
+    final balance = _income - _expense;
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _SummaryCard(
+              title: 'Pemasukan',
+              value: _formatCurrency(_income),
+              color: Colors.green,
+              icon: Icons.arrow_downward,
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: _SummaryCard(
+              title: 'Pengeluaran',
+              value: _formatCurrency(_expense),
+              color: Colors.red,
+              icon: Icons.arrow_upward,
+            )),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _SummaryCard(
+              title: 'Saldo',
+              value: _formatCurrency(balance),
+              color: balance >= 0 ? Colors.blue : Colors.orange,
+              icon: Icons.account_balance_wallet,
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: _SummaryCard(
+              title: 'Tugas Pending',
+              value: '$_pendingTasks',
+              color: Colors.purple,
+              icon: Icons.task_alt,
+            )),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExpenseChart() {
+    final categoryTotals = <String, double>{};
+    for (final tx in _transactions) {
+      if (tx['type'] == 'expense') {
+        final cat = tx['description'] ?? 'Lainnya';
+        final amt = (tx['amount'] as num).toDouble();
+        categoryTotals[cat] = (categoryTotals[cat] ?? 0) + amt;
+      }
+    }
+
+    if (categoryTotals.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final colors = [
+      const Color(0xFF3B82F6),
+      const Color(0xFF8B5CF6),
+      const Color(0xFFEC4899),
+      const Color(0xFFF59E0B),
+      const Color(0xFF10B981),
+      const Color(0xFFEF4444),
+    ];
+
+    final entries = categoryTotals.entries.toList();
+    final total = entries.fold<double>(0, (sum, e) => sum + e.value);
+
+    final sections = entries.asMap().entries.map((entry) {
+      final index = entry.key;
+      final data = entry.value;
+      final pct = (data.value / total * 100).toStringAsFixed(0);
+      return PieChartSectionData(
+        color: colors[index % colors.length],
+        value: data.value,
+        title: '$pct%',
+        radius: 70,
+        titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+      );
+    }).toList();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Pengeluaran per Kategori', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 180,
+              child: PieChart(
+                PieChartData(
+                  sections: sections,
+                  centerSpaceRadius: 35,
+                  sectionsSpace: 2,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: entries.asMap().entries.map((entry) {
+                final index = entry.key;
+                final data = entry.value;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 12, height: 12,
+                      decoration: BoxDecoration(
+                        color: colors[index % colors.length],
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text('${data.key} (${_formatCurrency(data.value)})',
+                        style: const TextStyle(fontSize: 11)),
+                  ],
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentTransactions() {
+    final recent = _transactions.take(5).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Transaksi Terbaru', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        if (recent.isEmpty)
+          const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('Belum ada transaksi')))
+        else
+          ...recent.map((tx) => Card(
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: tx['type'] == 'income'
+                    ? Colors.green.withValues(alpha: 0.2)
+                    : Colors.red.withValues(alpha: 0.2),
+                child: Icon(
+                  tx['type'] == 'income' ? Icons.arrow_downward : Icons.arrow_upward,
+                  color: tx['type'] == 'income' ? Colors.green : Colors.red,
+                  size: 20,
+                ),
+              ),
+              title: Text(tx['description'] ?? tx['type'] ?? ''),
+              subtitle: Text(_formatDate(tx['transaction_date'])),
+              trailing: Text(
+                '${tx['type'] == 'income' ? '+' : '-'}${_formatCurrency((tx['amount'] as num).toDouble())}',
+                style: TextStyle(
+                  color: tx['type'] == 'income' ? Colors.green : Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          )),
+      ],
+    );
+  }
+
+  Widget _buildTasksSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Tugas Mendatang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Icon(Icons.task_alt, size: 48, color: Colors.grey[600]),
+                const SizedBox(height: 8),
+                Text('$_pendingTasks tugas pending',
+                    style: TextStyle(color: Colors.grey[400])),
+                const SizedBox(height: 4),
+                const Text('Buka tab Chat untuk menambahkan tugas',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatCurrency(double amount) {
+    return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
+  }
+
+  String _formatDate(String? dateStr) {
+    if (dateStr == null) return '';
+    try {
+      final date = DateTime.parse(dateStr);
+      return DateFormat('dd MMM yyyy', 'id_ID').format(date);
+    } catch (e) {
+      return dateStr;
+    }
+  }
+}
+
+class _SummaryCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final Color color;
+  final IconData icon;
+
+  const _SummaryCard({
+    required this.title,
+    required this.value,
+    required this.color,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 16),
+                const SizedBox(width: 8),
+                Text(title, style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// --- Tab 2: Chat Asisten Native UI + Multi-Bubble typing rendering (Layer 4) ---
-class NativeChatScreen extends StatefulWidget {
-  const NativeChatScreen({super.key});
+// ====================================================================
+// TAB 2: CHAT
+// ====================================================================
+
+class ChatTab extends StatefulWidget {
+  const ChatTab({super.key});
 
   @override
-  State<NativeChatScreen> createState() => _NativeChatScreenState();
+  State<ChatTab> createState() => _ChatTabState();
 }
 
-class _NativeChatScreenState extends State<NativeChatScreen> {
-  final _msgController = TextEditingController();
+class _ChatTabState extends State<ChatTab> {
+  final _messageController = TextEditingController();
   final _scrollController = ScrollController();
-  final _dbHelper = LocalDatabaseHelper.instance;
-  final List<Map<String, dynamic>> _messages = [];
+  List<Map<String, dynamic>> _messages = [];
+  bool _isLoading = false;
   bool _isTyping = false;
-  String _assistantName = 'Personal Asistan';
-  String _preferredLanguage = 'id';
-  bool _greetingChecked = false;
+  String? _userId;
+  String _assistantName = 'Asisten';
+  String _userNickname = 'Sobat';
 
   @override
   void initState() {
     super.initState();
-    _loadProfileAndChatCache();
+    _loadUserInfo();
+    _loadChatHistory();
   }
 
-  Future<void> _loadProfileAndChatCache() async {
+  Future<void> _loadUserInfo() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user != null) {
-        final profileRes = await Supabase.instance.client
-            .from('user_profiles')
-            .select('assistant_name, dynamic_metadata')
-            .eq('id', user.id)
-            .maybeSingle();
-        if (profileRes != null && mounted) {
-          setState(() {
-            _assistantName = profileRes['assistant_name'] ?? 'Personal Asistan';
-            final meta = profileRes['dynamic_metadata'] as Map<String, dynamic>?;
-            _preferredLanguage = meta?['language'] ?? 'id';
-          });
-        } else if (profileRes == null && mounted) {
-          try {
-            await Supabase.instance.client.from('user_profiles').upsert({
-              'id': user.id,
-              'fullname': user.email?.split('@')[0] ?? 'Pengguna',
-              'selected_personality': 'witty_sidekick',
-              'assistant_name': 'Personal Asistan',
-              'user_nickname': user.email?.split('@')[0] ?? 'Pengguna',
-              'dynamic_metadata': {
-                'future_plans': []
-              }
-            });
-          } catch (e) {
-            print("Auto profile creation failed in chat: $e");
-          }
-        }
+      final profile = await Supabase.instance.client
+          .from('user_profiles')
+          .select('assistant_name, user_nickname')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (mounted && profile != null) {
+        setState(() {
+          _userId = userId;
+          _assistantName = profile['assistant_name'] ?? 'Asisten';
+          _userNickname = profile['user_nickname'] ?? 'Sobat';
+        });
       }
-      
-      // Load offline cache
-      final cachedMsgs = await _dbHelper.getChatMessages(null);
+    } catch (e) {
+      print('Error loading user info: $e');
+    }
+  }
+
+  Future<void> _loadChatHistory() async {
+    if (_userId == null) return;
+
+    try {
+      final res = await Supabase.instance.client
+          .from('app_chat_messages')
+          .select('*')
+          .eq('user_id', _userId!)
+          .isFilter('room_id', null)
+          .order('created_at', ascending: true)
+          .limit(50);
+
       if (mounted) {
         setState(() {
-          _messages.clear();
-          _messages.addAll(cachedMsgs);
+          _messages = List<Map<String, dynamic>>.from(res as List);
         });
         _scrollToBottom();
       }
-      // Check idle greeting
-      _checkIdleGreeting();
     } catch (e) {
-      print("Chat initialization error: $e");
+      print('Error loading chat: $e');
     }
   }
 
-  Future<void> _checkIdleGreeting() async {
-    if (_greetingChecked) return;
-    _greetingChecked = true;
+  Future<void> _sendMessage() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty || _userId == null) return;
+
+    setState(() {
+      _isLoading = true;
+      _isTyping = true;
+      _messages.add({
+        'message': text,
+        'sender_id': _userId,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    });
+
+    _messageController.clear();
+    _scrollToBottom();
+
     try {
-      final session = Supabase.instance.client.auth.currentSession;
-      if (session == null) return;
-      final response = await http.get(
-        Uri.parse('${AppConfig.activeUrl}/api/v1/chat/greeting'),
-        headers: {
-          'x-jarvis-gateway-key': AppConfig.gatewayKey,
-          'Authorization': 'Bearer ${session.accessToken}',
-        },
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['should_greet'] == true && data['greeting'] != null && mounted) {
-          final greetingMsg = {
-            'id': const Uuid().v4(),
-            'room_id': null,
-            'sender_id': null,
-            'sender_personality_id': 'greeting',
-            'message': data['greeting'],
-            'created_at': DateTime.now().toIso8601String(),
-          };
-          setState(() {
-            _messages.add(greetingMsg);
-          });
+      final response = await _callChatAPI(text);
+      if (response != null && mounted) {
+        setState(() {
+          if (response['bubbles'] != null) {
+            for (final bubble in response['bubbles']) {
+              _messages.add({
+                'message': bubble,
+                'sender_id': null,
+                'created_at': DateTime.now().toIso8601String(),
+              });
+            }
+          } else {
+            _messages.add({
+              'message': response['text'] ?? 'Maaf, terjadi kesalahan.',
+              'sender_id': null,
+              'created_at': DateTime.now().toIso8601String(),
+            });
+          }
           _scrollToBottom();
-        }
+        });
       }
     } catch (e) {
-      print('Idle greeting error: $e');
+      print('Error: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<Map<String, dynamic>?> _callChatAPI(String message) async {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) return null;
+
+      final response = await http.post(
+        Uri.parse('${AppConfig.activeUrl}/api/v1/chat'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${session.accessToken}',
+          'x-jarvis-gateway-key': AppConfig.gatewayKey,
+        },
+        body: jsonEncode({
+          'message': message,
+          'timezone': DateTime.now().timeZoneName,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print('Chat API error: $e');
+    }
+    return null;
   }
 
   void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
@@ -1915,409 +819,337 @@ class _NativeChatScreenState extends State<NativeChatScreen> {
     });
   }
 
-  Future<void> _sendMessage() async {
-    final text = _msgController.text.trim();
-    if (text.isEmpty) return;
-    _msgController.clear();
-
-    final user = Supabase.instance.client.auth.currentUser;
-    final userMsg = {
-      'id': const Uuid().v4(),
-      'room_id': null,
-      'sender_id': user?.id ?? 'user',
-      'sender_personality_id': null,
-      'message': text,
-      'created_at': DateTime.now().toIso8601String(),
-    };
-
-    setState(() {
-      _messages.add(userMsg);
-      _isTyping = true;
-    });
-    _scrollToBottom();
-
-    // Cache user message locally
-    await _dbHelper.insertChatMessage(userMsg);
-
-    try {
-      // Call Next.js Server Chat API with user timezone
-      final session = Supabase.instance.client.auth.currentSession;
-      print("JWT ACCESS TOKEN: ${session?.accessToken}");
-
-      // Get user timezone
-      final userTimezone = DateTime.now().timeZoneName;
-      final timezoneMap = {
-        'WIB': 'Asia/Jakarta',
-        'WITA': 'Asia/Makassar',
-        'WIT': 'Asia/Jayapura',
-      };
-      final mappedTimezone = timezoneMap[userTimezone] ?? 'Asia/Jakarta';
-
-      final response = await http.post(
-        Uri.parse('${AppConfig.activeUrl}/api/v1/chat'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-jarvis-gateway-key': AppConfig.gatewayKey,
-          'Authorization': 'Bearer ${session?.accessToken ?? ""}',
-        },
-        body: jsonEncode({
-          'message': text,
-          'room_id': null,
-          'language': _preferredLanguage,
-          'timezone': mappedTimezone,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List<dynamic> bubbles = data['bubbles'] ?? [];
-
-        setState(() {
-          _isTyping = false;
-        });
-
-        // Loop bubbles directly and render sequentially with simulation typing delay
-        for (var bubbleText in bubbles) {
-          if (!mounted) break;
-          
-          // Dynamic typing delay simulation based on text length (clamp between 250ms and 900ms)
-          setState(() {
-            _isTyping = true;
-          });
-          _scrollToBottom();
-          int delayMs = (bubbleText.toString().length * 8).clamp(250, 900);
-          await Future.delayed(Duration(milliseconds: delayMs));
-
-          if (!mounted) break;
-          
-          final aiMsg = {
-            'id': const Uuid().v4(),
-            'room_id': null,
-            'sender_id': null,
-            'sender_personality_id': 'personality', // representation
-            'message': bubbleText.toString(),
-            'created_at': DateTime.now().toIso8601String(),
-          };
-
-          setState(() {
-            _messages.add(aiMsg);
-            _isTyping = false;
-          });
-          _scrollToBottom();
-
-          // Save AI response message to offline SQLite cache
-          await _dbHelper.insertChatMessage(aiMsg);
-        }
-      } else {
-        throw Exception('Server responded with status: ${response.statusCode} (${response.body})');
-      }
-    } catch (e) {
-      setState(() {
-        _isTyping = false;
-      });
-      Sentry.captureException(e);
-
-      // Fallback response for offline / error - professional message
-      final fallbackMsg = {
-        'id': const Uuid().v4(),
-        'room_id': null,
-        'sender_id': null,
-        'sender_personality_id': 'error',
-        'message': '🔄 Koneksi ke server terputus.\n\nPesan Anda tetap tersimpan secara lokal dan akan dikirim otomatis saat koneksi pulih.\n\n💡 Tips: Pastikan koneksi internet stabil untuk pengalaman terbaik.',
-        'created_at': DateTime.now().toIso8601String(),
-      };
-      setState(() {
-        _messages.add(fallbackMsg);
-      });
-      _scrollToBottom();
-    }
-  }
-
-  void _showSearchDialog() {
-    final searchController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Row(
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
           children: [
-            Icon(Icons.search, color: Color(0xFF3B82F6)),
-            SizedBox(width: 8),
-            Text('Cari Data', style: TextStyle(color: Colors.white)),
+            Text(_assistantName),
+            Text(
+              'Online',
+              style: TextStyle(fontSize: 10, color: Colors.green[400]),
+            ),
           ],
         ),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: searchController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Ketik kata kunci...',
-                  hintStyle: const TextStyle(color: Colors.grey),
-                  filled: true,
-                  fillColor: const Color(0xFF0F172A),
-                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: _messages.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[600]),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Hai $_userNickname! 👋',
+                          style: TextStyle(fontSize: 18, color: Colors.grey[400]),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Tanyakan apa saja tentang keuangan,\ntugas, atau aktivitasmu.',
+                          style: TextStyle(color: Colors.grey[600]),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final msg = _messages[index];
+                      final isUser = msg['sender_id'] != null;
+                      return _ChatBubble(
+                        message: msg['message'] ?? '',
+                        isUser: isUser,
+                        time: _formatTime(msg['created_at']),
+                      );
+                    },
                   ),
-                ),
-                onSubmitted: (value) {
-                  if (value.length >= 2) {
-                    Navigator.pop(ctx);
-                    _performSearch(value);
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Minimal 2 karakter',
-                style: TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-            ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (searchController.text.length >= 2) {
-                Navigator.pop(ctx);
-                _performSearch(searchController.text);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF3B82F6),
+          if (_isTyping && _isLoading)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[800],
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
+                        bottomRight: Radius.circular(16),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildTypingDots(),
+                        const SizedBox(width: 8),
+                        const Text('AI mengetik...'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: const Text('Cari'),
-          ),
+          _buildInputArea(),
         ],
       ),
     );
   }
 
-  void _performSearch(String query) async {
-    try {
-      final session = Supabase.instance.client.auth.currentSession;
-      final response = await http.get(
-        Uri.parse('${AppConfig.activeUrl}/api/v1/search?q=${Uri.encodeComponent(query)}'),
-        headers: {
-          'x-jarvis-gateway-key': AppConfig.gatewayKey,
-          'Authorization': 'Bearer ${session?.accessToken ?? ""}',
-        },
-      ).timeout(const Duration(seconds: 10));
+  Widget _buildTypingDots() {
+    return Row(
+      children: List.generate(3, (i) => Container(
+        width: 6, height: 6,
+        margin: const EdgeInsets.only(right: 3),
+        decoration: BoxDecoration(
+          color: Colors.grey[400],
+          borderRadius: BorderRadius.circular(3),
+        ),
+      )),
+    );
+  }
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        _showSearchResults(query, data);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Gagal mencari data'),
-              backgroundColor: Colors.red,
+  Widget _buildInputArea() {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        border: Border(top: BorderSide(color: Colors.grey[800]!)),
+      ),
+      child: SafeArea(
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _messageController,
+                decoration: InputDecoration(
+                  hintText: 'Ketik pesan ke $_assistantName...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFF1F2937),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _sendMessage(),
+              ),
             ),
-          );
-        }
-      }
+            const SizedBox(width: 8),
+            IconButton.filled(
+              onPressed: _isLoading ? null : _sendMessage,
+              icon: const Icon(Icons.send),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatTime(String? dateStr) {
+    if (dateStr == null) return '';
+    try {
+      final date = DateTime.parse(dateStr);
+      return DateFormat('HH:mm').format(date);
     } catch (e) {
-      print('Search error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Koneksi bermasalah saat mencari'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      return '';
     }
   }
 
-  void _showSearchResults(String query, Map<String, dynamic> data) {
-    final results = data['results'] as Map<String, dynamic>;
-    final transactions = results['transactions'] as List? ?? [];
-    final tasks = results['tasks'] as List? ?? [];
-    final chat = results['chat'] as List? ?? [];
-    final total = data['total'] as int? ?? 0;
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+}
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF0F172A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (context, scrollController) => Column(
+class _ChatBubble extends StatelessWidget {
+  final String message;
+  final bool isUser;
+  final String time;
+
+  const _ChatBubble({
+    required this.message,
+    required this.isUser,
+    required this.time,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        decoration: BoxDecoration(
+          color: isUser ? const Color(0xFF3B82F6) : const Color(0xFF1F2937),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: isUser ? const Radius.circular(16) : Radius.zero,
+            bottomRight: isUser ? Radius.zero : const Radius.circular(16),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            Text(message, style: const TextStyle(color: Colors.white)),
+            const SizedBox(height: 4),
+            Text(time, style: TextStyle(fontSize: 10, color: Colors.grey[400])),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ====================================================================
+// TAB 3: SETTINGS
+// ====================================================================
+
+class SettingsTab extends StatelessWidget {
+  const SettingsTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pengaturan')),
+      body: FutureBuilder<Map<String, dynamic>?>(
+        future: _loadProfile(),
+        builder: (context, snapshot) {
+          return ListView(
+            children: [
+              // Profile
+              if (snapshot.hasData && snapshot.data!.isNotEmpty)
+                _buildProfileCard(snapshot.data!)
+              else
+                const SizedBox(height: 120),
+
+              const Divider(),
+
+              // Settings options
+              ListTile(
+                leading: const Icon(Icons.person),
+                title: const Text('Nama AI'),
+                subtitle: Text(snapshot.data?['assistant_name'] ?? 'Asisten'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showEditDialog(context, 'assistant_name', 'Nama AI'),
               ),
-              child: Column(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
+              ListTile(
+                leading: const Icon(Icons.badge),
+                title: const Text('Nama User'),
+                subtitle: Text(snapshot.data?['fullname'] ?? 'User'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showEditDialog(context, 'fullname', 'Nama User'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.palette),
+                title: const Text('Tema'),
+                subtitle: const Text('Dark / Light / System'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {},
+              ),
+              ListTile(
+                leading: const Icon(Icons.notifications),
+                title: const Text('Notifikasi'),
+                subtitle: const Text('Pengaturan notifikasi'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {},
+              ),
+
+              const Divider(),
+
+              // Actions
+              ListTile(
+                leading: const Icon(Icons.bug_report, color: Colors.orange),
+                title: const Text('Laporkan Bug'),
+                subtitle: const Text('Kirim laporan error'),
+                onTap: () {
+                  Sentry.captureMessage('User initiated bug report');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Terima kasih! Laporan sudah dikirim.')),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text('Logout', style: TextStyle(color: Colors.red)),
+                onTap: () => _showLogoutDialog(context),
+              ),
+
+              const Divider(),
+
+              // Version
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
                     children: [
-                      const Icon(Icons.search, color: Color(0xFF3B82F6)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Hasil pencarian: "$query"',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '$total hasil',
-                        style: const TextStyle(color: Colors.grey),
-                      ),
+                      Text('Personal Asistan', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text('v1.0.0', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text('by Claude Code', style: TextStyle(color: Colors.grey, fontSize: 10)),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
-            Expanded(
-              child: total == 0
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.search_off, size: 64, color: Colors.grey),
-                          SizedBox(height: 16),
-                          Text(
-                            'Tidak ada hasil',
-                            style: TextStyle(color: Colors.grey, fontSize: 16),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView(
-                      controller: scrollController,
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        // Transactions
-                        if (transactions.isNotEmpty) ...[
-                          _buildSearchSection('💰 Transaksi', transactions, Icons.attach_money),
-                          const SizedBox(height: 16),
-                        ],
-                        // Tasks
-                        if (tasks.isNotEmpty) ...[
-                          _buildSearchSection('✅ Tugas', tasks, Icons.task_alt),
-                          const SizedBox(height: 16),
-                        ],
-                        // Chat
-                        if (chat.isNotEmpty) ...[
-                          _buildSearchSection('💬 Percakapan', chat, Icons.chat_bubble_outline),
-                        ],
-                      ],
-                    ),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildSearchSection(String title, List items, IconData icon) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, color: const Color(0xFF3B82F6), size: 20),
-            const SizedBox(width: 8),
-            Text(
-              '$title (${items.length})',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ...items.map((item) => _buildSearchItem(item)).toList(),
-      ],
-    );
-  }
-
-  Widget _buildSearchItem(Map<String, dynamic> item) {
-    final category = item['category'] as String? ?? '';
-    String title = '';
-    String subtitle = '';
-    IconData icon = Icons.article;
-
-    if (category == 'transaction') {
-      final type = item['type'] as String? ?? 'expense';
-      final amount = item['amount'] ?? 0;
-      title = item['description'] ?? 'Transaksi';
-      subtitle = '${type == 'income' ? '+' : '-'} Rp ${NumberFormat('#,###').format(amount)}';
-      icon = type == 'income' ? Icons.arrow_downward : Icons.arrow_upward;
-    } else if (category == 'task') {
-      title = item['task_name'] ?? 'Tugas';
-      subtitle = item['status'] ?? 'pending';
-      icon = Icons.task_alt;
-    } else if (category == 'chat') {
-      title = item['message'] ?? 'Pesan';
-      subtitle = item['sender'] == 'user' ? 'Anda' : 'AI';
-      icon = Icons.chat_bubble;
-    }
-
+  Widget _buildProfileCard(Map<String, dynamic> profile) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-      ),
+      padding: const EdgeInsets.all(24),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF3B82F6).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
+          CircleAvatar(
+            radius: 36,
+            backgroundColor: const Color(0xFF3B82F6),
+            child: Text(
+              (profile['fullname'] ?? 'U')[0].toUpperCase(),
+              style: const TextStyle(fontSize: 28, color: Colors.white),
             ),
-            child: Icon(icon, color: const Color(0xFF3B82F6), size: 20),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title.length > 60 ? '${title.substring(0, 60)}...' : title,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  profile['fullname'] ?? 'User',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
+                const SizedBox(height: 4),
                 Text(
-                  subtitle,
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  profile['assistant_name'] ?? 'Asisten',
+                  style: TextStyle(color: Colors.grey[400]),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    profile['selected_personality'] ?? 'witty_sidekick',
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF3B82F6)),
+                  ),
                 ),
               ],
             ),
@@ -2327,1721 +1159,87 @@ class _NativeChatScreenState extends State<NativeChatScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: const Color(0xFF3B82F6).withOpacity(0.15),
-              child: const Icon(Icons.psychology, color: Color(0xFF3B82F6)),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(_assistantName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF10B981)),
-                    ),
-                    const SizedBox(width: 4),
-                    const Text('Real-time Cognitive Engine', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-        backgroundColor: const Color(0xFF0F172A),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search_rounded),
-            tooltip: 'Cari',
-            onPressed: () => _showSearchDialog(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_sweep_rounded),
-            tooltip: 'Hapus Cache Percakapan',
-            onPressed: () async {
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: const Color(0xFF1E293B),
-                  title: const Text('Hapus Percakapan?', style: TextStyle(color: Colors.white)),
-                  content: const Text('Apakah Anda yakin ingin menghapus cache percakapan ini? (Data di cloud tetap aman).', style: TextStyle(color: Colors.grey)),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
-                    TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hapus', style: TextStyle(color: Color(0xFFEF4444)))),
-                  ],
-                ),
-              );
-              if (confirm == true) {
-                // Show loading progress dialog
-                BuildContext? progressDialogContext;
-                showDialog(
-                  context: context,
-                  barrierDismissible: false,
-                  builder: (ctx) {
-                    progressDialogContext = ctx;
-                    return const Center(
-                      child: CircularProgressIndicator(color: Color(0xFF3B82F6)),
-                    );
-                  },
-                );
-
-                try {
-                  final session = Supabase.instance.client.auth.currentSession;
-                  final response = await http.post(
-                    Uri.parse('${AppConfig.activeUrl}/api/v1/chat/summarize'),
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'x-jarvis-gateway-key': AppConfig.gatewayKey,
-                      'Authorization': 'Bearer ${session?.accessToken ?? ""}',
-                    },
-                  ).timeout(const Duration(seconds: 15));
-
-                  // Pop the progress indicator
-                  if (progressDialogContext != null && progressDialogContext!.mounted) {
-                    Navigator.pop(progressDialogContext!);
-                  }
-
-                  String summaryMsg = 'Percakapan berhasil dibersihkan.';
-                  if (response.statusCode == 200) {
-                    final resData = jsonDecode(response.body);
-                    if (resData['success'] == true && resData['summary'] != null) {
-                      summaryMsg = 'Rangkuman Percakapan:\n\n${resData['summary']}';
-                    }
-                  }
-
-                  // Clear local db cache
-                  await _dbHelper.clearChatCache(null);
-                  if (mounted) {
-                    setState(() {
-                      _messages.clear();
-                    });
-                    
-                    // Show summary dialog
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        backgroundColor: const Color(0xFF1E293B),
-                        title: const Text('Percakapan Dihapus', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        content: Text(summaryMsg, style: const TextStyle(color: Colors.grey)),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Selesai', style: TextStyle(color: Color(0xFF3B82F6))),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  // Pop the progress indicator if still open
-                  if (progressDialogContext != null && progressDialogContext!.mounted) {
-                    Navigator.pop(progressDialogContext!);
-                  }
-                  print("Error during summarization: $e");
-                  Sentry.captureException(e);
-
-                  // Show professional error message
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('🔄 Ringkasan tidak dapat diproses saat ini. Pesan lokal tetap dihapus.'),
-                        backgroundColor: Color(0xFF10B981),
-                      ),
-                    );
-                  }
-
-                  // Clear local cache anyway as fallback
-                  await _dbHelper.clearChatCache(null);
-                  if (mounted) {
-                    setState(() {
-                      _messages.clear();
-                    });
-                  }
-                }
-              }
-            },
-          )
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length + (_isTyping ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == _messages.length) {
-                  return _buildTypingBubble();
-                }
-                final msg = _messages[index];
-                final isUser = msg['sender_id'] != null;
-                return _buildChatBubble(msg['message'], isUser);
-              },
-            ),
-          ),
-          _buildMessageInput(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildChatBubble(String text, bool isUser) {
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        decoration: BoxDecoration(
-          color: isUser ? const Color(0xFF3B82F6) : const Color(0xFF1E293B),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: isUser ? const Radius.circular(16) : const Radius.circular(0),
-            bottomRight: isUser ? const Radius.circular(0) : const Radius.circular(16),
-          ),
-          border: isUser ? null : Border.all(color: const Color(0x1CFFFFFF)),
-        ),
-        child: isUser
-            ? Text(
-                text,
-                style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.3),
-              )
-            : MarkdownBody(
-                data: text,
-                styleSheet: MarkdownStyleSheet(
-                  p: const TextStyle(color: Colors.white, fontSize: 14, height: 1.3),
-                  strong: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                  em: const TextStyle(color: Colors.white, fontStyle: FontStyle.italic, fontSize: 14),
-                  listBullet: const TextStyle(color: Colors.white, fontSize: 14),
-                  listBulletPadding: const EdgeInsets.only(right: 6, top: 2),
-                  h1: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                  h2: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  h3: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                  code: const TextStyle(
-                    color: Color(0xFF8B5CF6),
-                    backgroundColor: Color(0xFF0F172A),
-                    fontSize: 12,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ),
-      ),
-    );
-  }
-
-  Widget _buildTypingBubble() {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E293B),
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(16),
-            topRight: Radius.circular(16),
-            bottomRight: Radius.circular(16),
-          ),
-          border: Border.all(color: const Color(0x1CFFFFFF)),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF3B82F6)),
-            ),
-            SizedBox(width: 8),
-            Text('Mengetik analisis...', style: TextStyle(color: Colors.grey, fontSize: 13)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMessageInput() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F172A),
-        border: Border(top: BorderSide(color: Color(0x1CFFFFFF))),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _msgController,
-              minLines: 1,
-              maxLines: 5,
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              decoration: InputDecoration(
-                hintText: 'Ketik pesan Anda...',
-                hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
-                filled: true,
-                fillColor: const Color(0xFF0B0F19),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: const BorderSide(color: Color(0x33FFFFFF)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: const BorderSide(color: Color(0xFF3B82F6)),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            onTap: _sendMessage,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFF3B82F6),
-              ),
-              child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-            ),
-          )
-        ],
-      ),
-    );
-  }
-}
-
-// --- Tab 3: Money Tracker + SQLite local CRUD + base64 Receipt storage (Layer 3 & 13) ---
-class NativeMoneyTrackerScreen extends StatefulWidget {
-  const NativeMoneyTrackerScreen({super.key});
-
-  @override
-  State<NativeMoneyTrackerScreen> createState() => _NativeMoneyTrackerScreenState();
-}
-
-class _NativeMoneyTrackerScreenState extends State<NativeMoneyTrackerScreen> {
-  final _dbHelper = LocalDatabaseHelper.instance;
-  final List<Map<String, dynamic>> _transactions = [];
-  bool _isLoading = true;
-
-  final _formKey = GlobalKey<FormState>();
-  final _amountController = TextEditingController();
-  final _descController = TextEditingController();
-  String _txType = 'expense'; // expense or income
-  File? _receiptImage;
-  String? _receiptBase64;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadTransactions();
-  }
-
-  Future<void> _loadTransactions() async {
-    setState(() {
-      _isLoading = true;
-    });
-    try {
-      final txs = await _dbHelper.getTransactions();
-      setState(() {
-        _transactions.clear();
-        _transactions.addAll(txs);
-        _isLoading = false;
-      });
-    } catch (e) {
-      print("Failed loading transactions: $e");
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _pickImage(ImageSource source) async {
-    try {
-      final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: source, imageQuality: 50);
-      if (pickedFile != null) {
-        final file = File(pickedFile.path);
-        final bytes = await file.readAsBytes();
-        setState(() {
-          _receiptImage = file;
-          _receiptBase64 = base64Encode(bytes);
-        });
-      }
-    } catch (e) {
-      print("Image picking error: $e");
-    }
-  }
-
-  Future<void> _saveTransaction() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final amount = double.parse(_amountController.text.trim());
-    final desc = _descController.text.trim();
-    final txId = const Uuid().v4();
-    final dateStr = DateTime.now().toIso8601String().split('T')[0];
-
-    // Build receipt path structure if image uploaded
-    String? localReceiptUrl;
-    if (_receiptBase64 != null) {
-      localReceiptUrl = "data:image/jpeg;base64,$_receiptBase64";
-    }
-
-    final newTx = {
-      'id': txId,
-      'amount': amount,
-      'type': _txType,
-      'description': desc,
-      'transaction_date': dateStr,
-      'dynamic_metadata': {
-        'receipt_url': localReceiptUrl,
-        'created_at': DateTime.now().toIso8601String(),
-      },
-      'is_synced': 0
-    };
-
-    // Insert locally in SQLite
-    await _dbHelper.insertTransaction(newTx);
-    
-    // Clear Form
-    _amountController.clear();
-    _descController.clear();
-    setState(() {
-      _receiptImage = null;
-      _receiptBase64 = null;
-    });
-    
-    Navigator.of(context).pop();
-    _loadTransactions();
-
-    // Trigger background synchronization
-    SyncService.instance.triggerSync();
-  }
-
-  void _showAddDialog() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF0F172A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-                left: 20,
-                right: 20,
-                top: 24,
-              ),
-              child: SingleChildScrollView(
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'Tambah Transaksi Baru',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 16),
-                      // Segmented Type Selector
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                setModalState(() {
-                                  _txType = 'expense';
-                                });
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _txType == 'expense' ? const Color(0xFFEF4444) : const Color(0xFF1E293B),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              child: const Text('PENGELUARAN'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                setModalState(() {
-                                  _txType = 'income';
-                                });
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _txType == 'income' ? const Color(0xFF10B981) : const Color(0xFF1E293B),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              child: const Text('PEMASUKAN'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _amountController,
-                        keyboardType: TextInputType.number,
-                        decoration: _inputDecoration('Jumlah (Rupiah)'),
-                        validator: (val) => val == null || double.tryParse(val) == null ? 'Jumlah nominal wajib diisi' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _descController,
-                        decoration: _inputDecoration('Deskripsi Transaksi'),
-                        validator: (val) => val == null || val.isEmpty ? 'Deskripsi wajib diisi' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      // Receipt upload thumbnail logic
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextButton.icon(
-                              onPressed: () async {
-                                await _pickImage(ImageSource.camera);
-                                setModalState(() {});
-                              },
-                              icon: const Icon(Icons.camera_alt, color: Color(0xFF3B82F6)),
-                              label: const Text('Kamera', style: TextStyle(color: Color(0xFF3B82F6))),
-                            ),
-                          ),
-                          Expanded(
-                            child: TextButton.icon(
-                              onPressed: () async {
-                                await _pickImage(ImageSource.gallery);
-                                setModalState(() {});
-                              },
-                              icon: const Icon(Icons.photo, color: Color(0xFF3B82F6)),
-                              label: const Text('Galeri', style: TextStyle(color: Color(0xFF3B82F6))),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (_receiptImage != null)
-                        Container(
-                          margin: const EdgeInsets.symmetric(vertical: 12),
-                          height: 120,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            image: DecorationImage(
-                              image: FileImage(_receiptImage!),
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          child: Align(
-                            alignment: Alignment.topRight,
-                            child: IconButton(
-                              icon: const Icon(Icons.cancel, color: Colors.red),
-                              onPressed: () {
-                                setModalState(() {
-                                  _receiptImage = null;
-                                  _receiptBase64 = null;
-                                });
-                              },
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: _saveTransaction,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: const Color(0xFF3B82F6),
-                        ),
-                        child: const Text('SIMPAN TRANSAKSI', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                      const SizedBox(height: 24),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  InputDecoration _inputDecoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Colors.grey),
-      filled: true,
-      fillColor: const Color(0xFF0B0F19),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0x33FFFFFF)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFF3B82F6)),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Catatan Keuangan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-        backgroundColor: const Color(0xFF0F172A),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.sync_rounded),
-            onPressed: () async {
-              await SyncService.instance.triggerSync();
-              _loadTransactions();
-            },
-          )
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _transactions.isEmpty
-              ? const Center(child: Text('Belum ada transaksi keuangan.', style: TextStyle(color: Colors.grey)))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _transactions.length,
-                  itemBuilder: (context, index) {
-                    final tx = _transactions[index];
-                    final isExpense = tx['type'] == 'expense';
-                    final hasImage = tx['dynamic_metadata']?['receipt_url'] != null;
-
-                    return Card(
-                      color: const Color(0xFF1E293B),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isExpense ? const Color(0xFFEF4444).withOpacity(0.15) : const Color(0xFF10B981).withOpacity(0.15),
-                          child: Icon(
-                            isExpense ? Icons.arrow_downward : Icons.arrow_upward,
-                            color: isExpense ? const Color(0xFFEF4444) : const Color(0xFF10B981),
-                          ),
-                        ),
-                        title: Text(tx['description'] ?? 'Lain-lain', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Row(
-                          children: [
-                            Text(tx['transaction_date'] ?? ''),
-                            if (hasImage) ...[
-                              const SizedBox(width: 8),
-                              const Icon(Icons.receipt_long, size: 14, color: Colors.blue),
-                            ],
-                            const SizedBox(width: 8),
-                            if (tx['is_synced'] == 0)
-                              const Icon(Icons.cloud_queue_rounded, size: 14, color: Colors.grey)
-                            else
-                              const Icon(Icons.cloud_done_rounded, size: 14, color: Colors.green),
-                          ],
-                        ),
-                        trailing: Text(
-                          currencyFormat.format(tx['amount']),
-                          style: TextStyle(
-                            color: isExpense ? const Color(0xFFEF4444) : const Color(0xFF10B981),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddDialog,
-        backgroundColor: const Color(0xFF3B82F6),
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
-    );
-  }
-}
-
-// --- Tab 4: To-Do List + SQLite local CRUD (Layer 3 & 13) ---
-class NativeTodoListScreen extends StatefulWidget {
-  const NativeTodoListScreen({super.key});
-
-  @override
-  State<NativeTodoListScreen> createState() => _NativeTodoListScreenState();
-}
-
-class _NativeTodoListScreenState extends State<NativeTodoListScreen> {
-  final _dbHelper = LocalDatabaseHelper.instance;
-  final List<Map<String, dynamic>> _tasks = [];
-  bool _isLoading = true;
-
-  final _formKey = GlobalKey<FormState>();
-  final _taskNameController = TextEditingController();
-  String _dueDateStr = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadTasks();
-  }
-
-  Future<void> _loadTasks() async {
-    setState(() {
-      _isLoading = true;
-    });
-    try {
-      final tasks = await _dbHelper.getTasks();
-      setState(() {
-        _tasks.clear();
-        _tasks.addAll(tasks);
-        _isLoading = false;
-      });
-    } catch (e) {
-      print("Failed loading tasks: $e");
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _saveTask() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final name = _taskNameController.text.trim();
-    final taskId = const Uuid().v4();
-    final due = _dueDateStr.isEmpty ? DateTime.now().add(const Duration(days: 1)).toIso8601String() : _dueDateStr;
-
-    final newTask = {
-      'id': taskId,
-      'task_name': name,
-      'status': 'pending',
-      'due_date': due,
-      'dynamic_metadata': {
-        'created_at': DateTime.now().toIso8601String(),
-      },
-      'is_synced': 0
-    };
-
-    await _dbHelper.insertTask(newTask);
-    _taskNameController.clear();
-    _dueDateStr = '';
-    
-    Navigator.of(context).pop();
-    _loadTasks();
-
-    SyncService.instance.triggerSync();
-  }
-
-  Future<void> _toggleTaskStatus(Map<String, dynamic> task) async {
-    final curStatus = task['status'];
-    final newStatus = curStatus == 'completed' ? 'pending' : 'completed';
-    
-    final updatedTask = {
-      'id': task['id'],
-      'task_name': task['task_name'],
-      'status': newStatus,
-      'due_date': task['due_date'],
-      'dynamic_metadata': task['dynamic_metadata'] ?? {},
-      'is_synced': 0
-    };
-
-    await _dbHelper.insertTask(updatedTask);
-    _loadTasks();
-    SyncService.instance.triggerSync();
-  }
-
-  void _showAddTaskDialog() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF0F172A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-                left: 20,
-                right: 20,
-                top: 24,
-              ),
-              child: SingleChildScrollView(
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'Tambah Tugas Baru',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _taskNameController,
-                        decoration: InputDecoration(
-                          labelText: 'Nama Tugas',
-                          labelStyle: const TextStyle(color: Colors.grey),
-                          filled: true,
-                          fillColor: const Color(0xFF0B0F19),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: Color(0x33FFFFFF)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: Color(0xFF3B82F6)),
-                          ),
-                        ),
-                        validator: (val) => val == null || val.isEmpty ? 'Nama tugas wajib diisi' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      TextButton.icon(
-                        onPressed: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: DateTime.now().add(const Duration(days: 1)),
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(const Duration(days: 365)),
-                          );
-                          if (picked != null) {
-                            setModalState(() {
-                              _dueDateStr = picked.toIso8601String();
-                            });
-                          }
-                        },
-                        icon: const Icon(Icons.calendar_month, color: Color(0xFF3B82F6)),
-                        label: Text(
-                          _dueDateStr.isEmpty ? 'Pilih Tenggat Waktu (Due Date)' : 'Due Date: ${_dueDateStr.split('T')[0]}',
-                          style: const TextStyle(color: Color(0xFF3B82F6)),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: _saveTask,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: const Color(0xFF3B82F6),
-                        ),
-                        child: const Text('SIMPAN TUGAS', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                      const SizedBox(height: 24),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('To-Do List Kognitif', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-        backgroundColor: const Color(0xFF0F172A),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.sync_rounded),
-            onPressed: () async {
-              await SyncService.instance.triggerSync();
-              _loadTasks();
-            },
-          )
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _tasks.isEmpty
-              ? const Center(child: Text('Belum ada tugas terdaftar.', style: TextStyle(color: Colors.grey)))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _tasks.length,
-                  itemBuilder: (context, index) {
-                    final task = _tasks[index];
-                    final isCompleted = task['status'] == 'completed';
-
-                    return Card(
-                      color: const Color(0xFF1E293B),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        leading: Checkbox(
-                          value: isCompleted,
-                          activeColor: const Color(0xFF10B981),
-                          onChanged: (_) => _toggleTaskStatus(task),
-                        ),
-                        title: Text(
-                          task['task_name'] ?? '',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            decoration: isCompleted ? TextDecoration.lineThrough : null,
-                            color: isCompleted ? Colors.grey : Colors.white,
-                          ),
-                        ),
-                        subtitle: Row(
-                          children: [
-                            const Icon(Icons.calendar_today, size: 12, color: Colors.grey),
-                            const SizedBox(width: 4),
-                            Text(task['due_date']?.split('T')[0] ?? '', style: const TextStyle(fontSize: 12)),
-                            const SizedBox(width: 12),
-                            if (task['is_synced'] == 0)
-                              const Icon(Icons.cloud_queue_rounded, size: 14, color: Colors.grey)
-                            else
-                              const Icon(Icons.cloud_done_rounded, size: 14, color: Colors.green),
-                          ],
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
-                          onPressed: () async {
-                            await _dbHelper.deleteTask(task['id']);
-                            _loadTasks();
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddTaskDialog,
-        backgroundColor: const Color(0xFF3B82F6),
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
-    );
-  }
-}
-
-// --- Tab 5: Settings / Ego Profile & Sentry tracking test (Layer 12) ---
-class NativeSettingsScreen extends StatefulWidget {
-  const NativeSettingsScreen({super.key});
-
-  @override
-  State<NativeSettingsScreen> createState() => _NativeSettingsScreenState();
-}
-
-class _NativeSettingsScreenState extends State<NativeSettingsScreen> {
-  final _supabase = Supabase.instance.client;
-  String _fullname = 'Memuat...';
-  String _userNickname = 'Memuat...';
-  String _userEmail = '-';
-  String _assistantName = 'Personal Asistan';
-  String _selectedPersonality = 'witty_sidekick';
-  String _longTermMemory = 'Belum ada data memori kognitif. Gunakan aplikasi dan chat untuk melatih memori AI.';
-  String _preferredLanguage = 'id';
-  String? _avatarUrl;
-  bool _isLoading = true;
-  int _morningBriefingHour = 5;
-  bool _systemStatus = false;
-
-  // Sync ego options with registration form
-  final List<Map<String, dynamic>> _egoOptions = [
-    {'id': 'witty_sidekick', 'name': 'Personal Asistan', 'desc': 'Ramah & Humoris', 'icon': Icons.chat_bubble},
-    {'id': 'wise_mentor', 'name': 'Guru Bijak', 'desc': 'Bijak & Inspiratif', 'icon': Icons.school},
-    {'id': 'efficient_executive', 'name': 'Eksekutif', 'desc': 'Tegas & Produktif', 'icon': Icons.work},
-    {'id': 'creative_companion', 'name': 'Sahabat Kreatif', 'desc': 'Kreatif & Supportif', 'icon': Icons.lightbulb},
-    {'id': 'calm_balancer', 'name': 'Penyeimbang', 'desc': 'Tenang & Empati', 'icon': Icons.spa},
-  ];
-
-  String _getJoinedDate() {
-    final user = _supabase.auth.currentUser;
-    if (user == null) return '-';
-    try {
-      final createdAt = user.createdAt;
-      if (createdAt.isEmpty) return '-';
-      final dt = DateTime.parse(createdAt);
-      final months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-      return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
-    } catch (_) {
-      return '-';
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProfile();
-    _checkSystemStatus();
-  }
-
-  Future<void> _loadProfile() async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) return;
+  Future<Map<String, dynamic>> _loadProfile() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return {};
 
     try {
-      var data = await _supabase
+      final res = await Supabase.instance.client
           .from('user_profiles')
-          .select('fullname, user_nickname, assistant_name, selected_personality, dynamic_metadata')
-          .eq('id', user.id)
+          .select('*')
+          .eq('id', userId)
           .maybeSingle();
-
-      if (data == null) {
-        try {
-          await _supabase.from('user_profiles').upsert({
-            'id': user.id,
-            'fullname': user.email?.split('@')[0] ?? 'Pengguna',
-            'selected_personality': 'witty_sidekick',
-            'assistant_name': 'Personal Asistan',
-            'user_nickname': user.email?.split('@')[0] ?? 'Pengguna',
-            'dynamic_metadata': {
-              'future_plans': []
-            }
-          });
-          data = await _supabase
-              .from('user_profiles')
-              .select('fullname, user_nickname, assistant_name, selected_personality, dynamic_metadata')
-              .eq('id', user.id)
-              .maybeSingle();
-        } catch (e) {
-          print("Auto profile creation failed in settings: $e");
-        }
-      }
-
-      final profileData = data;
-      if (profileData != null && mounted) {
-        setState(() {
-          _fullname = profileData['fullname'] ?? 'Sobat';
-          _userNickname = profileData['user_nickname'] ?? 'Sobat';
-          _userEmail = user.email ?? '-';
-          _assistantName = profileData['assistant_name'] ?? 'Personal Asistan';
-          _selectedPersonality = profileData['selected_personality'] ?? 'witty_sidekick';
-
-          final meta = profileData['dynamic_metadata'] as Map<String, dynamic>?;
-          _longTermMemory = meta?['long_term_memory'] ??
-              'Belum ada data memori kognitif. Gunakan aplikasi secara rutin untuk melatih memori AI.';
-          _preferredLanguage = meta?['language'] ?? 'id';
-          _avatarUrl = meta?['avatar_url'];
-          _morningBriefingHour = meta?['morning_briefing_hour'] ?? 5;
-          _isLoading = false;
-        });
-      }
+      return res ?? {};
     } catch (e) {
-      print("Failed loading settings profile: $e");
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      return {};
     }
   }
 
-  Future<void> _checkSystemStatus() async {
-    try {
-      final session = Supabase.instance.client.auth.currentSession;
-      if (session == null) {
-        if (mounted) setState(() => _systemStatus = false);
-        return;
-      }
-
-      final startTime = DateTime.now();
-      await Supabase.instance.client
-          .from('user_profiles')
-          .select('id')
-          .limit(1)
-          .maybeSingle();
-      final elapsed = DateTime.now().difference(startTime).inMilliseconds;
-
-      if (mounted) {
-        setState(() {
-          _systemStatus = elapsed < 2000;
-        });
-      }
-    } catch (e) {
-      print("System status check failed: $e");
-      if (mounted) setState(() => _systemStatus = false);
-    }
-  }
-
-  Future<void> _updatePersonality(String id) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) return;
-
-    setState(() {
-      _selectedPersonality = id;
-    });
-
-    try {
-      final selectedEgoData = _egoOptions.firstWhere((e) => e['id'] == id);
-      await _supabase.from('user_profiles').update({
-        'selected_personality': id,
-        'assistant_name': selectedEgoData['name'],
-      }).eq('id', user.id);
-
-      setState(() {
-        _assistantName = selectedEgoData['name'] as String;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Karakter AI berhasil diubah menjadi: ${selectedEgoData['name']}'),
-          backgroundColor: const Color(0xFF10B981),
-        ),
-      );
-    } catch (e) {
-      print("Failed to update personality: $e");
-      Sentry.captureException(e);
-    }
-  }
-
-  Future<bool> _verifyAssistantNameLock() async {
+  void _showEditDialog(BuildContext context, String field, String title) {
     final controller = TextEditingController();
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Text('Verifikasi Keamanan', style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Sebutkan nama AI Anda untuk melanjutkan:', style: TextStyle(color: Colors.grey, fontSize: 13)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Nama AI...',
-                hintStyle: const TextStyle(color: Colors.grey),
-                filled: true,
-                fillColor: const Color(0xFF0F172A),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
-          TextButton(
-            onPressed: () {
-              if (controller.text.trim().toLowerCase() == _assistantName.toLowerCase()) {
-                Navigator.pop(ctx, true);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nama AI salah!'), backgroundColor: Colors.red));
-              }
-            },
-            child: const Text('Verifikasi', style: TextStyle(color: Color(0xFF3B82F6))),
-          ),
-        ],
-      ),
-    );
-    return result == true;
-  }
-
-  // Helper function to build info row with optional edit
-  Widget _buildInfoRow(IconData icon, String label, String value, String? fieldToEdit, bool canEdit) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, size: 14, color: Colors.grey),
-        const SizedBox(width: 6),
-        Text(
-          '$label: ',
-          style: const TextStyle(color: Colors.grey, fontSize: 13),
-        ),
-        Text(
-          value,
-          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-        ),
-        if (canEdit && fieldToEdit != null) ...[
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: () => _showEditFieldDialog(label, fieldToEdit, value),
-            child: const Icon(Icons.edit, size: 12, color: Color(0xFF3B82F6)),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Future<void> _uploadAvatar() async {
-    try {
-      final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-      if (pickedFile == null) return;
-      
-      final file = File(pickedFile.path);
-      setState(() => _isLoading = true);
-      
-      final user = _supabase.auth.currentUser;
-      final fileExt = pickedFile.path.split('.').last;
-      final fileName = '${user!.id}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-      
-      await _supabase.storage.from('avatars').upload(fileName, file);
-      final publicUrl = _supabase.storage.from('avatars').getPublicUrl(fileName);
-      
-      final userProfile = await _supabase.from('user_profiles').select('dynamic_metadata').eq('id', user.id).single();
-      final meta = userProfile['dynamic_metadata'] as Map<String, dynamic>? ?? {};
-      meta['avatar_url'] = publicUrl;
-      
-      await _supabase.from('user_profiles').update({'dynamic_metadata': meta}).eq('id', user.id);
-      
-      setState(() {
-        _avatarUrl = publicUrl;
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto profil berhasil diubah')));
-    } catch (e) {
-      setState(() => _isLoading = false);
-      Sentry.captureException(e);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal upload: $e')));
-    }
-  }
-
-  Future<void> _updateSettingsField(String field, String value) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) return;
-    try {
-      if (field == 'language') {
-        final userProfile = await _supabase.from('user_profiles').select('dynamic_metadata').eq('id', user.id).single();
-        final meta = userProfile['dynamic_metadata'] as Map<String, dynamic>? ?? {};
-        meta['language'] = value;
-        await _supabase.from('user_profiles').update({'dynamic_metadata': meta}).eq('id', user.id);
-        setState(() { _preferredLanguage = value; });
-      } else if (field == 'long_term_memory') {
-        final userProfile = await _supabase.from('user_profiles').select('dynamic_metadata').eq('id', user.id).single();
-        final meta = userProfile['dynamic_metadata'] as Map<String, dynamic>? ?? {};
-        meta['long_term_memory'] = value;
-        await _supabase.from('user_profiles').update({'dynamic_metadata': meta}).eq('id', user.id);
-        setState(() { _longTermMemory = value; });
-      } else if (field == 'user_nickname') {
-        await _supabase.from('user_profiles').update({'user_nickname': value}).eq('id', user.id);
-        setState(() { _userNickname = value; });
-      } else {
-        if (field == 'fullname') {
-          final nickname = value.trim().split(' ')[0];
-          await _supabase.from('user_profiles').update({
-            'fullname': value,
-            'user_nickname': nickname,
-          }).eq('id', user.id);
-          setState(() {
-            _fullname = value;
-            _userNickname = nickname;
-          });
-        } else {
-          await _supabase.from('user_profiles').update({field: value}).eq('id', user.id);
-          if (field == 'assistant_name') setState(() { _assistantName = value; });
-        }
-      }
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pengaturan disimpan'), backgroundColor: Color(0xFF10B981)));
-    } catch (e) {
-      Sentry.captureException(e);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e'), backgroundColor: Colors.red));
-    }
-  }
-
-  void _showEditFieldDialog(String title, String field, String currentValue) {
-    final controller = TextEditingController(text: currentValue);
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: Text('Ubah $title', style: const TextStyle(color: Colors.white)),
+      builder: (context) => AlertDialog(
+        title: Text('Edit $title'),
         content: TextField(
           controller: controller,
-          maxLines: field == 'long_term_memory' ? 5 : 1,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: const Color(0xFF0F172A),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          ),
+          decoration: InputDecoration(labelText: title),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
           TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _updateSettingsField(field, controller.text.trim());
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              // TODO: Save to Supabase
             },
-            child: const Text('Simpan', style: TextStyle(color: Color(0xFF3B82F6))),
+            child: const Text('Simpan'),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _logout() async {
-    await _supabase.auth.signOut();
-    await LocalDatabaseHelper.instance.clearAllCache();
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Apakah Anda yakin ingin keluar?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(context);
+              await Supabase.instance.client.auth.signOut();
+            },
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
   }
+}
+
+// ====================================================================
+// PLACEHOLDER - Full implementation in separate file
+// ====================================================================
+
+class ProfileSetupScreen extends StatelessWidget {
+  const ProfileSetupScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profil Asisten', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-        backgroundColor: const Color(0xFF0F172A),
-        elevation: 0,
+    return const Scaffold(
+      body: Center(
+        child: Text('Profile Setup - Redirect to LoginRegisterScreen'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Redesigned User Profile Card (Premium Gradient & Glassmorphism)
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF1E293B).withOpacity(0.85),
-                          const Color(0xFF0F172A).withOpacity(0.95),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0x22FFFFFF), width: 1.5),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 15,
-                          offset: const Offset(0, 8),
-                        )
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        Stack(
-                          alignment: Alignment.bottomRight,
-                          children: [
-                            GestureDetector(
-                              onTap: _uploadAvatar,
-                              child: CircleAvatar(
-                                radius: 48,
-                                backgroundColor: const Color(0xFF3B82F6).withOpacity(0.15),
-                                backgroundImage: _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
-                                child: _avatarUrl == null
-                                    ? const Icon(Icons.person, size: 48, color: Color(0xFF3B82F6))
-                                    : null,
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF3B82F6),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.camera_alt, size: 14, color: Colors.white),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        // Main Name Row with Edit Button
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                _fullname,
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  letterSpacing: 0.5,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: () => _showEditFieldDialog('Nama Lengkap', 'fullname', _fullname),
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF3B82F6).withOpacity(0.15),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(Icons.edit, size: 14, color: Color(0xFF3B82F6)),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        const Divider(color: Color(0x11FFFFFF), thickness: 1),
-                        const SizedBox(height: 12),
-                        // Nama Panggilan
-                        _buildInfoRow(Icons.person_outline, 'Nama Panggilan', _userNickname, 'user_nickname', true),
-                        const SizedBox(height: 8),
-                        // Email Terdaftar
-                        _buildInfoRow(Icons.email_outlined, 'Email Terdaftar', _userEmail, null, false),
-                        const SizedBox(height: 8),
-                        // Status Sistem
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: _systemStatus ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: (_systemStatus ? const Color(0xFF10B981) : const Color(0xFFEF4444)).withOpacity(0.5),
-                                    blurRadius: 4,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Status: ${_systemStatus ? 'Database Aktif' : 'Offline'}',
-                              style: TextStyle(
-                                color: _systemStatus ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: _checkSystemStatus,
-                              child: Icon(Icons.refresh, size: 14, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.calendar_today_rounded, size: 14, color: Colors.grey),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Bergabung Sejak: ${_getJoinedDate()}',
-                              style: const TextStyle(color: Colors.grey, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Redesigned Assistant AI Card
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF1E293B).withOpacity(0.85),
-                          const Color(0xFF0F172A).withOpacity(0.95),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0x22FFFFFF), width: 1.5),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 15,
-                          offset: const Offset(0, 8),
-                        )
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.psychology_rounded, color: Color(0xFF8B5CF6), size: 24),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Konfigurasi Asisten AI',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        // Assistant Name Field
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Nama Asisten:',
-                              style: TextStyle(color: Colors.grey, fontSize: 14),
-                            ),
-                            Row(
-                              children: [
-                                Text(
-                                  _assistantName,
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                                ),
-                                const SizedBox(width: 6),
-                                GestureDetector(
-                                  onTap: () => _showEditFieldDialog('Nama Asisten', 'assistant_name', _assistantName),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF8B5CF6).withOpacity(0.15),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(Icons.edit, size: 14, color: Color(0xFF8B5CF6)),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        // Language Selection
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Bahasa Interaksi:',
-                              style: TextStyle(color: Colors.grey, fontSize: 14),
-                            ),
-                            DropdownButton<String>(
-                              value: _preferredLanguage,
-                              dropdownColor: const Color(0xFF1E293B),
-                              style: const TextStyle(color: Color(0xFF8B5CF6), fontSize: 14, fontWeight: FontWeight.bold),
-                              underline: const SizedBox(),
-                              items: const [
-                                DropdownMenuItem(value: 'id', child: Text('Bahasa Indonesia')),
-                                DropdownMenuItem(value: 'en', child: Text('English')),
-                              ],
-                              onChanged: (val) {
-                                if (val != null) _updateSettingsField('language', val);
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Morning Briefing Hour Setting
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0x11FFFFFF)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFBBF24).withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(Icons.wb_sunny_rounded, color: Color(0xFFFBBF24), size: 20),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Text('Morning Briefing', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'AI akan memberikan briefing harian saat kamu membuka aplikasi setelah jam yang diset.',
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Jam Briefing:', style: TextStyle(color: Colors.grey, fontSize: 14)),
-                            DropdownButton<int>(
-                              value: _morningBriefingHour,
-                              dropdownColor: const Color(0xFF1E293B),
-                              style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 14, fontWeight: FontWeight.bold),
-                              underline: const SizedBox(),
-                              items: List.generate(24, (i) => DropdownMenuItem(
-                                value: i,
-                                child: Text('${i.toString().padLeft(2, '0')}:00 ${i < 12 ? 'AM' : 'PM'}'),
-                              )),
-                              onChanged: (val) async {
-                                if (val == null) return;
-                                setState(() { _morningBriefingHour = val; });
-                                try {
-                                  final session = _supabase.auth.currentSession;
-                                  if (session == null) return;
-                                  await http.post(
-                                    Uri.parse('${AppConfig.activeUrl}/api/v1/briefing'),
-                                    headers: {
-                                      'Content-Type': 'application/json',
-                                      'x-jarvis-gateway-key': AppConfig.gatewayKey,
-                                      'Authorization': 'Bearer ${session.accessToken}',
-                                    },
-                                    body: jsonEncode({'morning_briefing_hour': val}),
-                                  );
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Jam briefing diubah ke ${val.toString().padLeft(2, '0')}:00'),
-                                      backgroundColor: const Color(0xFF10B981),
-                                    ),
-                                  );
-                                } catch (e) {
-                                  print('Failed to update briefing hour: $e');
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Cognitive AI Memory Block
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Memori Jangka Panjang AI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                      IconButton(
-                        icon: const Icon(Icons.edit, size: 18, color: Color(0xFF3B82F6)),
-                        onPressed: () async {
-                          final locked = await _verifyAssistantNameLock();
-                          if (locked) {
-                            _showEditFieldDialog('Memori Jangka Panjang', 'long_term_memory', _longTermMemory);
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0x11FFFFFF)),
-                    ),
-                    child: Text(
-                      _longTermMemory,
-                      style: const TextStyle(color: Colors.grey, fontSize: 13, height: 1.4),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Ego Selector - menggunakan _egoOptions yang sudah di-sync dengan registration
-                  const Text('Pilih Karakter AI Anda', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 12),
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _egoOptions.length,
-                    itemBuilder: (context, index) {
-                      final item = _egoOptions[index];
-                      final isSelected = item['id'] == _selectedPersonality;
-
-                      return Card(
-                        color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.15) : const Color(0xFF1E293B),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(
-                            color: isSelected ? const Color(0xFF3B82F6) : Colors.transparent,
-                            width: 1,
-                          ),
-                        ),
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: ListTile(
-                          leading: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.3) : const Color(0xFF1E293B),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              item['icon'] as IconData,
-                              color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
-                              size: 20,
-                            ),
-                          ),
-                          title: Text(item['name'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text(item['desc'] as String, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                          trailing: isSelected ? const Icon(Icons.check_circle, color: Color(0xFF3B82F6)) : null,
-                          onTap: () async {
-                            final locked = await _verifyAssistantNameLock();
-                            if (locked) {
-                              _updatePersonality(item['id'] as String);
-                            }
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Sentry Test Button (tanpa crash)
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      try {
-                        throw Exception('Test Sentry Error: Sengaja dipicu dari halaman Pengaturan Sobat AI');
-                      } catch (e, stackTrace) {
-                        await Sentry.captureException(e, stackTrace: stackTrace);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('✅ Error uji coba berhasil dikirim ke Sentry!'),
-                            backgroundColor: Color(0xFF10B981),
-                          ),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.bug_report, color: Color(0xFFF59E0B)),
-                    label: const Text('TEST SENTRY CRASH', style: TextStyle(color: Color(0xFFF59E0B))),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: const BorderSide(color: Color(0xFFF59E0B)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Logout button
-                  OutlinedButton.icon(
-                    onPressed: _logout,
-                    icon: const Icon(Icons.logout, color: Color(0xFFEF4444)),
-                    label: const Text('LOGOUT / KELUAR', style: TextStyle(color: Color(0xFFEF4444))),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: const BorderSide(color: Color(0xFFEF4444)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Center(
-                    child: Text(
-                      'v1.0.0',
-                      style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
     );
   }
 }
