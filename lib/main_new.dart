@@ -828,6 +828,7 @@ class _ChatTabState extends State<ChatTab> {
   String? _userId;
   String? _assistantName;
   String? _userNickname;
+  String? _remainingQuota;
 
   @override
   void initState() {
@@ -942,6 +943,10 @@ class _ChatTabState extends State<ChatTab> {
 
       if (response != null) {
         setState(() {
+          if (response['quota'] != null && response['quota']['remainingRequests'] != null) {
+            _remainingQuota = response['quota']['remainingRequests'].toString();
+          }
+          
           // Add AI response(s)
           if (response['bubbles'] != null) {
             for (final bubble in response['bubbles']) {
@@ -1024,7 +1029,16 @@ class _ChatTabState extends State<ChatTab> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(_assistantName ?? 'Chat AI'),
+        title: Column(
+          children: [
+            Text(_assistantName ?? 'Chat AI'),
+            if (_remainingQuota != null)
+              Text(
+                'Sisa Kuota API: $_remainingQuota',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+          ],
+        ),
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
