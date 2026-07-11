@@ -10,7 +10,16 @@ if (!(globalThis as any).__fetchPatchedForQuota) {
   globalThis.fetch = async function (input, init) {
     const response = await originalFetch(input, init);
     const store = quotaStorage.getStore();
-    if (store && input.toString().includes('generativelanguage.googleapis.com')) {
+    let urlStr = '';
+    if (typeof input === 'string') {
+      urlStr = input;
+    } else if (input instanceof URL) {
+      urlStr = input.toString();
+    } else if (input && typeof (input as any).url === 'string') {
+      urlStr = (input as any).url;
+    }
+    
+    if (store && urlStr.includes('generativelanguage.googleapis.com')) {
       store.remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
       store.remainingTokens = response.headers.get('x-ratelimit-remaining-tokens');
     }

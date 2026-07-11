@@ -52,3 +52,4 @@ app.*.map.json
 .dex
 *.keystore
 node_modules
+.env*
