@@ -1,35 +1,31 @@
 import { GoogleGenAI } from '@google/genai';
 import * as Sentry from '@sentry/nextjs';
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+export const quotaStorage = new AsyncLocalStorage<{ remainingRequests?: string | null; remainingTokens?: string | null }>();
+
+// Safely intercept global fetch to get quota headers
+if (!(globalThis as any).__fetchPatchedForQuota) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async function (input, init) {
+    const response = await originalFetch(input, init);
+    const store = quotaStorage.getStore();
+    if (store && input.toString().includes('generativelanguage.googleapis.com')) {
+      store.remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
+      store.remainingTokens = response.headers.get('x-ratelimit-remaining-tokens');
+    }
+    return response;
+  };
+  (globalThis as any).__fetchPatchedForQuota = true;
+}
 
 // Initialize the Gemini API client (new unified SDK)
-const getGenAI = (onQuotaUpdate?: (quota: any) => void) => {
+const getGenAI = () => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not defined in environment variables.');
   }
-  return new GoogleGenAI({ 
-    apiKey,
-    httpOptions: {
-      fetch: async (url: string | URL | globalThis.Request, init?: RequestInit) => {
-        const response = await fetch(url, init);
-        if (onQuotaUpdate) {
-          try {
-            const reqs = response.headers.get('x-ratelimit-remaining-requests');
-            const tokens = response.headers.get('x-ratelimit-remaining-tokens');
-            if (reqs || tokens) {
-              onQuotaUpdate({
-                remainingRequests: reqs,
-                remainingTokens: tokens
-              });
-            }
-          } catch (e) {
-            // ignore
-          }
-        }
-        return response;
-      }
-    } as any
-  });
+  return new GoogleGenAI({ apiKey });
 };
 
 // Helper function to format date with user's timezone
@@ -217,10 +213,7 @@ export async function runStage2Chat(params: {
     return newBubbles;
   };
 
-  let latestQuota: any = null;
-  const ai = getGenAI((q) => {
-    latestQuota = q;
-  });
+  const ai = getGenAI();
 
   const formattedPersonality = params.personalityInstruction
     .replace(/{assistant_name}/g, params.assistantName)
@@ -310,9 +303,22 @@ Example response style:
   });
 
   let attempts = 3;
+  let latestQuota: any = null;
+
   while (attempts > 0) {
     try {
-      const result = await chat.sendMessage({ message: params.userMessage });
+      const state = { remainingRequests: null, remainingTokens: null };
+      const result = await quotaStorage.run(state, async () => {
+        return await chat.sendMessage({ message: params.userMessage });
+      });
+      
+      if (state.remainingRequests || state.remainingTokens) {
+        latestQuota = {
+          remainingRequests: state.remainingRequests,
+          remainingTokens: state.remainingTokens
+        };
+      }
+      
       const text = result.text ?? '';
       
       // Parse the [BREAK] separated strings into bubbles
