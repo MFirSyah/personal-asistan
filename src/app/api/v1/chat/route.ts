@@ -618,7 +618,7 @@ IMPORTANT: When using tools:
     }
 
     // 8. Stage 2 Chat styling with AI Tools
-    let bubbles = await runStage2Chat({
+    let { bubbles, quota } = await runStage2Chat({
       userMessage: scrubbedMessage,
       userNickname,
       assistantName,
@@ -835,7 +835,7 @@ DO NOT use execute_database_query - it does not exist anymore for security reaso
     runLearningEngine().catch(console.error);
 
     // 10. Return response bubbles
-    return NextResponse.json({ bubbles });
+    return NextResponse.json({ bubbles, quota });
   } catch (err: any) {
     console.error('Error in Chat Endpoint:', err);
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });

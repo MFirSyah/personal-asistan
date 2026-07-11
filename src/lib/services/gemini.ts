@@ -2,12 +2,34 @@ import { GoogleGenAI } from '@google/genai';
 import * as Sentry from '@sentry/nextjs';
 
 // Initialize the Gemini API client (new unified SDK)
-const getGenAI = () => {
+const getGenAI = (onQuotaUpdate?: (quota: any) => void) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not defined in environment variables.');
   }
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ 
+    apiKey,
+    httpOptions: {
+      fetch: async (url: string | URL | globalThis.Request, init?: RequestInit) => {
+        const response = await fetch(url, init);
+        if (onQuotaUpdate) {
+          try {
+            const reqs = response.headers.get('x-ratelimit-remaining-requests');
+            const tokens = response.headers.get('x-ratelimit-remaining-tokens');
+            if (reqs || tokens) {
+              onQuotaUpdate({
+                remainingRequests: reqs,
+                remainingTokens: tokens
+              });
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+        return response;
+      }
+    }
+  });
 };
 
 // Helper function to format date with user's timezone
@@ -157,7 +179,7 @@ export async function runStage2Chat(params: {
   extractedData: ExtractedData;
   chatHistory: Array<{ role: 'user' | 'model'; parts: string }>;
   userTimezone?: string; // Optional timezone from user device
-}): Promise<string[]> {
+}): Promise<{ bubbles: string[], quota: any }> {
   // Use user's timezone or default to Asia/Jakarta (WIB)
   const userTz = params.userTimezone || 'Asia/Jakarta';
   const dateInfo = formatDateForUser(userTz);
@@ -195,7 +217,10 @@ export async function runStage2Chat(params: {
     return newBubbles;
   };
 
-  const ai = getGenAI();
+  let latestQuota: any = null;
+  const ai = getGenAI((q) => {
+    latestQuota = q;
+  });
 
   const formattedPersonality = params.personalityInstruction
     .replace(/{assistant_name}/g, params.assistantName)
@@ -296,18 +321,18 @@ Example response style:
         .map((b) => b.trim())
         .filter(Boolean);
 
-      return wrapResponse(bubbles.length > 0 ? bubbles : [text]);
+      return { bubbles: wrapResponse(bubbles.length > 0 ? bubbles : [text]), quota: latestQuota };
     } catch (error) {
       console.error(`Error in Stage 2 Chat (attempts left: ${attempts - 1}):`, error);
       attempts--;
       if (attempts === 0) {
         Sentry.captureException(error);
-        return wrapResponse(['Maaf, terjadi kesalahan koneksi dengan otak AI saya. Bisa tolong ulangi?']);
+        return { bubbles: wrapResponse(['Maaf, terjadi kesalahan koneksi dengan otak AI saya. Bisa tolong ulangi?']), quota: latestQuota };
       }
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
-  return wrapResponse(['Maaf, terjadi kesalahan koneksi dengan otak AI saya. Bisa tolong ulangi?']);
+  return { bubbles: wrapResponse(['Maaf, terjadi kesalahan koneksi dengan otak AI saya. Bisa tolong ulangi?']), quota: latestQuota };
 }
 
 function sanitizeChatHistory(history: Array<{ role: 'user' | 'model'; parts: string }>) {
