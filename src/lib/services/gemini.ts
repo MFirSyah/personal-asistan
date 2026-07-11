@@ -28,7 +28,7 @@ const getGenAI = (onQuotaUpdate?: (quota: any) => void) => {
         }
         return response;
       }
-    }
+    } as any
   });
 };
 
