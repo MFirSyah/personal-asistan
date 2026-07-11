@@ -121,7 +121,7 @@ If any category has no entries, return an empty array for that key. Do not inclu
   while (attempts > 0) {
     try {
       const result = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite',
+        model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
           temperature: 0.0,
@@ -275,7 +275,7 @@ Example response style:
   }));
 
   const chat = ai.chats.create({
-    model: 'gemini-3.1-flash-lite',
+    model: 'gemini-2.5-flash',
     config: {
       temperature: params.temperature,
       topP: params.topP,

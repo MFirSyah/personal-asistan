@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     else timeOfDay = 'malam';
 
     const result = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
+      model: 'gemini-2.5-flash',
       contents: `You are ${assistantName}, an AI personal assistant for ${userNickname}.
 Your personality: ${personalityHint}
 Current time in Indonesia (WIB): ${timeOfDay}, ${now.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} ${now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' })} WIB

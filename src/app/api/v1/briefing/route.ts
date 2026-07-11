@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
     }[timezone] || { name: 'WIB', offset: 'UTC+7' };
 
     const result = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
+      model: 'gemini-2.5-flash',
       contents: `You are ${assistantName}, an AI personal assistant for ${userNickname}.
 Your personality: ${personalityHint}
 

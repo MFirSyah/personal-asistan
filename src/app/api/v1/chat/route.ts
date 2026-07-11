@@ -433,7 +433,7 @@ IMPORTANT: When using tools:
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
         const memResult = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite',
+          model: 'gemini-2.5-flash',
           contents: memoryPrompt,
         });
         const newMemory = memResult.text ?? '';
@@ -445,7 +445,7 @@ IMPORTANT: When using tools:
         if (existingMemory && existingMemory.length > 10) {
           const combinedPrompt = `Merge these two memory contexts into a single, concise, bulleted list of facts about the user. Remove duplicates.\n\nExisting:\n${existingMemory}\n\nNew:\n${newMemory}`;
           const combinedResult = await ai.models.generateContent({
-            model: 'gemini-3.1-flash-lite',
+            model: 'gemini-2.5-flash',
             contents: combinedPrompt,
           });
           finalMemory = combinedResult.text ?? '';
@@ -638,6 +638,7 @@ IMPORTANT: When using tools:
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
       // Create a prompt asking if the AI wants to use tools
+      // SECURITY: Using whitelist-safe tool definitions (no raw SQL)
       const toolCheckPrompt = `
 The user said: "${scrubbedMessage}"
 
@@ -646,33 +647,34 @@ Your previous response was: "${bubbles.join(' [BREAK] ')}"
 Based on your personality instruction and the database schema available to you,
 should you execute any database operations? If yes, specify which tool to use and with what parameters.
 
+Available tools (USE THESE - no raw SQL allowed):
+- get_database_schema: Get table structure info
+- list_finance_records: List user's financial transactions (params: limit, type_filter, start_date, end_date)
+- list_todo_items: List user's tasks (params: limit, status_filter)
+- create_finance_record: Record a new transaction (params: type, amount, description, transaction_date)
+- create_todo_item: Create a new task (params: task_name, due_date, priority)
+- update_todo_status: Update task status (params: task_name, new_status)
+- get_finance_summary: Get financial summary for date range (params: start_date, end_date)
+- list_available_tables: List available tables
+
 Respond in this JSON format ONLY (no other text):
 {
   "should_use_tool": true/false,
-  "tool_name": "get_database_schema" | "execute_database_query" | "list_available_tables" | null,
-  "tool_args": {
-    "statement": "SQL statement if execute_database_query",
-    "table_name": "table name",
-    "intent": "insert|update|delete|select"
-  },
+  "tool_name": "list_finance_records" | "list_todo_items" | "create_finance_record" | "create_todo_item" | "update_todo_status" | "get_finance_summary" | null,
+  "tool_args": { ... appropriate parameters based on tool_name ... },
   "reasoning": "Why you're using this tool"
 }
 
-Only suggest 'execute_database_query' if the user explicitly asks to:
-- Add, update, or delete data
-- See specific transaction or task details
-- Check their financial status or statistics
-
-DO NOT suggest tool usage for casual conversation or questions about general topics.`;
-
+DO NOT suggest tool usage for casual conversation or questions about general topics.
+DO NOT use execute_database_query - it does not exist anymore for security reasons.`;
       let toolCallResult: any = null;
       let toolUsed = false;
 
       try {
         // Generate with tools available
         const modelResponse = await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
-          contents: toolCheckPrompt,
+          model: 'gemini-2.5-flash',
+          contents: `The user said: "${scrubbedMessage}"\n\nYour previous response was: "${bubbles.join(' [BREAK] ')}"\n\nBased on your personality instruction and the database schema available to you, should you execute any database operations? If yes, specify which tool to use and with what parameters.\n\nAvailable tools (USE THESE - no raw SQL allowed):\n- get_database_schema: Get table structure info\n- list_finance_records: List user's financial transactions (params: limit, type_filter, start_date, end_date)\n- list_todo_items: List user's tasks (params: limit, status_filter)\n- create_finance_record: Record a new transaction (params: type, amount, description, transaction_date)\n- create_todo_item: Create a new task (params: task_name, due_date, priority)\n- update_todo_status: Update task status (params: task_name, new_status)\n- get_finance_summary: Get financial summary for date range (params: start_date, end_date)\n- list_available_tables: List available tables\n\nRespond in this JSON format ONLY (no other text):\n{\n  "should_use_tool": true/false,\n  "tool_name": "list_finance_records" | "list_todo_items" | "create_finance_record" | "create_todo_item" | "update_todo_status" | "get_finance_summary" | null,\n  "tool_args": { ... appropriate parameters based on tool_name ... },\n  "reasoning": "Why you're using this tool"\n}\n\nDO NOT suggest tool usage for casual conversation or questions about general topics.\nDO NOT use execute_database_query - it does not exist anymore for security reasons.`,
           config: {
             tools: [{ functionDeclarations: geminiToolDeclarations as any }],
             temperature: 0.1, // Low temperature for tool decisions
@@ -696,7 +698,7 @@ DO NOT suggest tool usage for casual conversation or questions about general top
               // Format result for AI context
               let resultSummary = '';
               if (result.success) {
-                resultSummary = `✅ Success: ${JSON.stringify(result.data || result.message || result)}`;
+                resultSummary = `✅ Success: ${JSON.stringify((result as any).data || (result as any).message || result)}`;
               } else {
                 resultSummary = `❌ Error: ${result.error}`;
               }

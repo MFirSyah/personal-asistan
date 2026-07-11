@@ -5,25 +5,22 @@
   justify-content: center;
   min-height: 100vh;
   padding: 40px 20px;
-  background-color: #0b0f19;
-  background-image: 
-    radial-gradient(at 10% 20%, rgba(59, 130, 246, 0.06) 0px, transparent 50%),
-    radial-gradient(at 90% 10%, rgba(139, 92, 246, 0.06) 0px, transparent 50%),
-    radial-gradient(at 50% 80%, rgba(16, 185, 129, 0.04) 0px, transparent 50%);
-  color: #f3f4f6;
-  font-family: 'Inter', sans-serif;
+  background-color: transparent; /* inherits from body.mesh-gradient-bg */
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), sans-serif;
   overflow-y: auto;
 }
 
 .wizard-card {
   width: 100%;
   max-width: 650px;
-  background: rgba(17, 24, 39, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--glass-surface-panel);
+  border: 1px solid var(--glass-border-panel);
   border-radius: 24px;
   padding: 40px;
-  backdrop-filter: blur(20px);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), 0 0 25px rgba(139, 92, 246, 0.1);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 20px 50px var(--shadow-color);
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -38,18 +35,18 @@
 }
 
 .wizard-header h2 {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-geist-sans), sans-serif;
   font-size: 1.8rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #fff 30%, #3b82f6 100%);
+  background: linear-gradient(135deg, var(--text-primary) 30%, var(--accent-primary) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 8px;
 }
 
 .wizard-header p {
-  color: #9ca3af;
+  color: var(--text-secondary);
   font-size: 0.95rem;
 }
 
@@ -215,23 +212,25 @@
   width: 100%;
   padding: 12px 16px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: var(--glass-surface-input);
+  border: 1px solid var(--glass-border-input);
+  color: var(--text-primary);
   outline: none;
   font-size: 0.95rem;
   transition: all 0.25s ease;
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
 }
 
 .form-text-input:focus {
-  border-color: #3b82f6;
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.25);
+  border-color: var(--accent-primary);
+  background: var(--glass-surface-input);
+  box-shadow: 0 0 10px rgba(131, 43, 210, 0.25); /* surface tint shadow */
 }
 
 .btn-wizard {
-  background: #3b82f6;
-  color: #fff;
+  background: var(--accent-primary);
+  color: var(--on-primary);
   border: none;
   padding: 14px 28px;
   border-radius: 10px;
@@ -243,13 +242,13 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-geist-sans), sans-serif;
   margin-top: 10px;
 }
 
 .btn-wizard:hover {
-  background: #2563eb;
-  box-shadow: 0 0 15px rgba(59, 130, 246, 0.35);
+  background: var(--primary);
+  box-shadow: 0 0 15px rgba(111, 0, 190, 0.35); /* primary-container */
 }
 
 .btn-wizard-secondary {

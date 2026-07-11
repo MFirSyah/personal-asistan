@@ -1,0 +1,22 @@
+name: Keep Supabase Alive
+
+# Mencegah project Supabase free tier auto-pause setelah 7 hari tanpa aktivitas.
+# Setup: Settings -> Secrets and variables -> Actions di repo GitHub ini,
+# tambahkan SUPABASE_URL dan SUPABASE_ANON_KEY (ambil dari Supabase dashboard
+# -> Project Settings -> API). Lihat docs/arsitektur.md bagian 16.2.
+
+on:
+  schedule:
+    - cron: '0 9 */3 * *'  # tiap 3 hari, jam 9 pagi UTC — cukup untuk cegah pause 7 hari
+  workflow_dispatch:        # bisa dipicu manual dari tab Actions di GitHub
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/users?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"

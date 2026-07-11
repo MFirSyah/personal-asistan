@@ -67,6 +67,7 @@ export default function DashboardPage() {
   const [editNickname, setEditNickname] = useState('');
   const [editAssistantName, setEditAssistantName] = useState('');
   const [editSelectedPersonality, setEditSelectedPersonality] = useState('witty_sidekick');
+  const [editMorningBriefingTime, setEditMorningBriefingTime] = useState('06:00');
 
   // Demo Mode State - Reactive for proper card locking
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -115,6 +116,7 @@ export default function DashboardPage() {
       setEditNickname(profile.user_nickname || '');
       setEditAssistantName(profile.assistant_name || '');
       setEditSelectedPersonality(profile.selected_personality || 'witty_sidekick');
+      setEditMorningBriefingTime(profile.dynamic_metadata?.morning_briefing_time || '06:00');
     }
   }, [profile]);
 
@@ -747,13 +749,19 @@ export default function DashboardPage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Pengguna tidak terautentikasi.');
 
+        const updatedMetadata = {
+          ...(profile?.dynamic_metadata || {}),
+          morning_briefing_time: editMorningBriefingTime
+        };
+
         const { error } = await supabase
           .from('user_profiles')
           .update({
             fullname: editFullname.trim(),
             user_nickname: editNickname.trim(),
             assistant_name: editAssistantName.trim(),
-            selected_personality: editSelectedPersonality
+            selected_personality: editSelectedPersonality,
+            dynamic_metadata: updatedMetadata
           })
           .eq('id', user.id);
 
@@ -765,7 +773,11 @@ export default function DashboardPage() {
         fullname: editFullname.trim(),
         user_nickname: editNickname.trim(),
         assistant_name: editAssistantName.trim(),
-        selected_personality: editSelectedPersonality
+        selected_personality: editSelectedPersonality,
+        dynamic_metadata: {
+          ...(prev?.dynamic_metadata || {}),
+          morning_briefing_time: editMorningBriefingTime
+        }
       }));
 
       alert('Profil berhasil diperbarui!');
@@ -3342,6 +3354,25 @@ export default function DashboardPage() {
                       />
                     </div>
                   </div>
+                  
+                  <div style={{ marginTop: '16px' }}>
+                    <button 
+                      type="button" 
+                      className="btn" 
+                      style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B', border: '1px solid rgba(245, 158, 11, 0.3)', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '10px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
+                      onClick={async () => {
+                        try {
+                          throw new Error('Test Sentry Error: Sengaja dipicu dari Settings Web App');
+                        } catch (e) {
+                          const Sentry = await import('@sentry/nextjs');
+                          Sentry.captureException(e);
+                          alert('✅ Error uji coba berhasil dikirim ke Sentry!');
+                        }
+                      }}
+                    >
+                      <span style={{ fontSize: '1.2rem' }}>⚠️</span> TEST SENTRY CRASH
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '16px' }}>
@@ -3377,8 +3408,20 @@ export default function DashboardPage() {
                       </select>
                     </div>
                   </div>
+                  <div className="form-row" style={{ marginTop: '16px' }}>
+                    <div className="form-group" style={{ width: '50%' }}>
+                      <label htmlFor="morning_briefing">Jam Morning Briefing</label>
+                      <input 
+                        type="time" 
+                        id="morning_briefing" 
+                        className="form-control" 
+                        value={editMorningBriefingTime}
+                        onChange={(e) => setEditMorningBriefingTime(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
                 </div>
-
               </div>
 
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px', borderTop: '1px solid var(--border-glass)', paddingTop: '16px' }}>

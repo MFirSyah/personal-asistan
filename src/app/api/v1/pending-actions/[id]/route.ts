@@ -87,7 +87,7 @@ export async function PUT(
       return NextResponse.json({
         success: true,
         message: `Action approved and executed successfully`,
-        affected_rows: result.affected_rows || 0,
+        affected_rows: (result as any).affected_rows || 0,
         result
       }, { headers: securityHeaders });
     } else {
